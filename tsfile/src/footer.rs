@@ -2,7 +2,7 @@ use std::io::{Read, Cursor};
 
 use crate::FOOTER_SIZE;
 use crate::error::Result;
-use crate::metadata::index::TsFileMetadata;
+use crate::metadata::TsFileMetadata;
 use crate::reader::ChunkReader;
 use crate::error::TsFileError;
 use byteorder::{LittleEndian, ByteOrder, BigEndian};
