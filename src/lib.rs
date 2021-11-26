@@ -5,24 +5,26 @@ const FOOTER_SIZE: usize = 10;
 
 #[macro_use]
 pub mod error;
-pub mod metadata;
-pub mod reader;
-pub mod footer;
+pub mod file;
+pub mod chunk;
+mod utils;
 
 
 mod tests {
-    use std::fs::File;
-    use std::path::Path;
-
-    use crate::reader::{FileSource, Length};
-    use std::io::Read;
-    use crate::footer::parser_metadata;
+    use crate::file::tsfile_search_reader::TsFileSearchReader;
+    use std::convert::TryFrom;
+    use crate::file::reader::FileReader;
 
     #[test]
     fn it_works() {
         let path = "/Users/liudawei/allfiles/github/incubator-iotdb/data/data/sequence/root.sg1/0/1609135472595-183-0.tsfile";
-        let r1 = File::open(&Path::new(path)).unwrap();
-        let metadata = parser_metadata(r1);
-        println!("{:?}", metadata);
+        // let path = "/Users/liudawei/allfiles/workspace/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
+        if let Ok(reader) = TsFileSearchReader::try_from(path) {
+            let x = reader.metadata();
+            println!("{:?}", x)
+        }
+        // let r1 = File::open(&Path::new(path)).unwrap();
+        // let metadata = parser_metadata(r1);
+        // println!("{:?}", metadata);
     }
 }

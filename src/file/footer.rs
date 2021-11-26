@@ -2,21 +2,20 @@ use std::io::{Read, Cursor};
 
 use crate::FOOTER_SIZE;
 use crate::error::Result;
-use crate::metadata::TsFileMetadata;
-use crate::reader::ChunkReader;
 use crate::error::TsFileError;
-use byteorder::{LittleEndian, ByteOrder, BigEndian};
-use std::borrow::BorrowMut;
+use byteorder::{ByteOrder, BigEndian};
+use crate::file::metadata::TsFileMetadata;
+use crate::file::reader::{SectionReader};
 
-pub fn parser_metadata<R: ChunkReader>(chunk_reader: R) -> Result<TsFileMetadata> {
-    let file_size = chunk_reader.len();
+pub fn parser_metadata<R: SectionReader>(reader: &R) -> Result<TsFileMetadata> {
+    let file_size = reader.len();
     if file_size < (FOOTER_SIZE as u64) {
         return Err(general_err!(
             "Invalid TsFile. Size is smaller than footer"
         ));
     }
 
-    let mut result = chunk_reader
+    let mut result = reader
         .get_read(file_size - FOOTER_SIZE as u64, FOOTER_SIZE)?;
 
     let mut end_buf = vec![0; FOOTER_SIZE];
@@ -36,7 +35,7 @@ pub fn parser_metadata<R: ChunkReader>(chunk_reader: R) -> Result<TsFileMetadata
 
     let footer_metadata_pos = file_size - FOOTER_SIZE as u64 - metadata_len as u64;
 
-    let metadata_reader = chunk_reader
+    let metadata_reader = reader
         .get_read(footer_metadata_pos, metadata_len as usize)?;
     let mut metadata_reader = Box::new(metadata_reader);
 
