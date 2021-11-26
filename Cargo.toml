@@ -1,5 +1,5 @@
 [package]
-name = "iotdb"
+name = "tsfile-rs"
 version = "0.1.0"
 authors = ["liudw <liudw@apache.org>"]
 edition = "2018"
@@ -7,9 +7,8 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace]
-members = [
-    "tsfile"
-]
 
 
 [dependencies]
+byteorder = "1"
+bit-set = "0.5.2"
