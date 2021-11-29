@@ -1,12 +1,15 @@
-use crate::file::reader::{SectionReader, FileReader, RowIter};
-use std::sync::Arc;
-use crate::file::metadata::{TsFileMetadata};
 use std::convert::TryFrom;
 use std::fs::File;
-use crate::error::TsFileError;
+use std::io::{Cursor, Read};
 use std::path::Path;
+use std::sync::Arc;
+
 use crate::error::Result;
+use crate::error::TsFileError;
 use crate::file::footer;
+use crate::file::metadata::{MetadataIndexNodeType, TsFileMetadata};
+use crate::file::metadata::MetadataIndexNodeType::InternalDevice;
+use crate::file::reader::{FileReader, RowIter, SectionReader};
 
 impl TryFrom<File> for TsFileSearchReader<File> {
     type Error = TsFileError;
@@ -44,12 +47,44 @@ impl<'a> TryFrom<&'a str> for TsFileSearchReader<File> {
 pub struct TsFileSearchReader<R: SectionReader> {
     reader: Arc<R>,
     metadata: TsFileMetadata,
+    all_devices: Vec<String>,
 }
 
 impl<R: SectionReader> FileReader for TsFileSearchReader<R> {
     fn metadata(&self) -> &TsFileMetadata {
         &self.metadata
     }
+
+    fn all_devices(&self) -> &Vec<String> {
+        if self.all_devices.is_empty() {
+            let index = self.metadata.file_meta().metadata_index();
+            match index {
+                InternalDevice(root) => {
+                    if let Some(start) = root.children().get(0) {
+                        let len = root.end_offset() - start.offset();
+                        if let Ok(mut sReader) = self
+                            .reader
+                            .get_read(start.offset() as u64, len as usize) {
+                            let mut data = vec![0; len as usize];
+                            sReader.read(&mut data)?;
+                            let mut cursor = Box::new(Cursor::new(data));
+
+                            for i in 0..root.children().len() {
+                                if let Ok(InternalDevice(c)) = MetadataIndexNodeType::new(&mut cursor) {
+
+                                }
+                            }
+                            MetadataIndexNodeType::new()
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        &self.all_devices
+    }
+
     fn get_device_reader(&self, device_name: &str) -> Result<Box<dyn crate::file::reader::DeviceReader>> {
         todo!()
     }
@@ -69,6 +104,7 @@ impl<R: 'static + SectionReader> TsFileSearchReader<R> {
         Ok(Self {
             reader: Arc::new(file),
             metadata,
+            all_devices: vec![],
         })
     }
 }

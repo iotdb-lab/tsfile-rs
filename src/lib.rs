@@ -17,15 +17,17 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let path = "/Users/liudawei/allfiles/workspace/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
+        let path = "/Users/liudawei/allfiles/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
         if let Ok(reader) = TsFileSearchReader::try_from(path) {
             let x = reader.metadata();
             let filemeta = x.file_meta();
             let x1 = x.file_meta().metadata_index();
+
+
             // match x1 {
             //
             // }
-            println!("{:?}", x);
+            println!("{:?}", x1);
 
             if let Some(bf) = filemeta.bloom_filter() {
                 if bf.contains("root.group_0.d_0") {

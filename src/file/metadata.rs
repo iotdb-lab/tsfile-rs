@@ -1,12 +1,14 @@
-use std::io::{Cursor, Read, Error};
-use byteorder::{BigEndian, ByteOrder};
-use crate::error::{Result, TsFileError};
-use bit_set::BitSet;
-use crate::file::metadata::MetadataIndexNodeType::{InternalDevice, LeafDevice, InternalMeasurement, LeafMeasurement};
-use crate::error::TsFileError::General;
 use std::borrow::BorrowMut;
+use std::io::{Cursor, Error, Read};
+
+use bit_set::BitSet;
+use byteorder::{BigEndian, ByteOrder};
 use varint::{VARINT_32_MAX_BYTES, VarintRead};
-use crate::utils::io::{VarIntReader, BigEndianReader};
+
+use crate::error::{Result, TsFileError};
+use crate::error::TsFileError::General;
+use crate::file::metadata::MetadataIndexNodeType::{InternalDevice, InternalMeasurement, LeafDevice, LeafMeasurement};
+use crate::utils::io::{BigEndianReader, VarIntReader};
 
 #[derive(Debug)]
 pub struct TsFileMetadata {
@@ -85,16 +87,34 @@ pub enum MetadataIndexNodeType {
     LeafMeasurement(MetaDataIndexNode),
 }
 
+
 #[derive(Debug)]
 pub struct MetaDataIndexNode {
     children: Vec<MetadataIndexEntry>,
     end_offset: i64,
 }
 
+impl MetaDataIndexNode {
+    pub fn children(&self) -> &Vec<MetadataIndexEntry> {
+        &self.children
+    }
+
+    pub fn end_offset(&self) -> i64 {
+        self.end_offset
+    }
+}
+
+
 #[derive(Debug)]
 pub struct MetadataIndexEntry {
     name: String,
     offset: i64,
+}
+
+impl MetadataIndexEntry {
+    pub fn offset(&self) -> i64 {
+        self.offset
+    }
 }
 
 pub struct TimeseriesMetadata {}

@@ -1,7 +1,8 @@
-use std::io::{Read};
-use crate::error::Result;
 use std::fs::File;
-use crate::file::metadata::{TsFileMetadata, TimeseriesMetadata, ChunkMetadata};
+use std::io::Read;
+
+use crate::error::Result;
+use crate::file::metadata::{ChunkMetadata, TimeseriesMetadata, TsFileMetadata};
 use crate::utils::io::FileSource;
 
 pub trait Length {
@@ -21,11 +22,13 @@ pub trait SectionReader: Length {
 pub trait FileReader {
     fn metadata(&self) -> &TsFileMetadata;
 
+    fn all_devices(&self) -> &Vec<String>;
+
     fn get_device_reader(&self, device_name: &str) -> Result<Box<dyn DeviceReader>>;
 
     fn get_sensor_iter(&self, sensor_path: &str) -> Result<RowIter>;
 
-    fn get_filter_iter(&self, sensor_path: &str, predicate:  &dyn Fn(u64) -> bool) -> Result<RowIter>;
+    fn get_filter_iter(&self, sensor_path: &str, predicate: &dyn Fn(u64) -> bool) -> Result<RowIter>;
 }
 
 pub trait DeviceReader {
