@@ -17,11 +17,21 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let path = "/Users/liudawei/allfiles/github/incubator-iotdb/data/data/sequence/root.sg1/0/1609135472595-183-0.tsfile";
-        // let path = "/Users/liudawei/allfiles/workspace/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
+        let path = "/Users/liudawei/allfiles/workspace/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
         if let Ok(reader) = TsFileSearchReader::try_from(path) {
             let x = reader.metadata();
-            println!("{:?}", x)
+            let filemeta = x.file_meta();
+            let x1 = x.file_meta().metadata_index();
+            // match x1 {
+            //
+            // }
+            println!("{:?}", x);
+
+            if let Some(bf) = filemeta.bloom_filter() {
+                if bf.contains("root.group_0.d_0") {
+                    println!("xxxxxxxxx:{:?}", x);
+                };
+            }
         }
         // let r1 = File::open(&Path::new(path)).unwrap();
         // let metadata = parser_metadata(r1);

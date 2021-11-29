@@ -1,8 +1,10 @@
-use std::io::{Read, Seek, SeekFrom, Result};
+use std::io::{Read, Seek, SeekFrom, Result, Cursor};
 use std::cell::RefCell;
 use core::{fmt, cmp};
 use crate::file::reader::{Length, TryClone};
-
+use varint::{VarintRead};
+use crate::error::TsFileError;
+use byteorder::{BigEndian, ByteOrder};
 
 const DEFAULT_BUF_SIZE: usize = 8 * 1024;
 
@@ -114,3 +116,43 @@ impl<R: TsFileReader> Length for FileSource<R> {
         self.end - self.start
     }
 }
+
+pub trait BigEndianReader: Read {
+    fn read_big_endian_i32(&mut self) -> i32 {
+        let mut buffer = vec![0; 4];
+        self.read(&mut buffer).unwrap();
+        BigEndian::read_i32(&buffer)
+    }
+
+
+    fn read_big_endian_i64(&mut self) -> i64 {
+        let mut vec = vec![0; 8];
+        self.read(&mut vec).unwrap();
+        BigEndian::read_i64(&vec)
+    }
+}
+
+
+pub trait VarIntReader: VarintRead {
+    fn readVarIntString(&mut self) -> Result<String> {
+        match self.read_unsigned_varint_32() {
+            Ok(len) => {
+                let mut x: i32 = (len >> 1) as i32;
+                if (len & 1) != 0 {
+                    x = !x;
+                }
+
+                let mut data: Vec<u8> = vec![0; x as usize];
+                self.read(&mut data);
+                Ok(String::from_utf8(data).unwrap())
+            }
+            Err(e) => {
+                Err(e)
+            }
+        }
+    }
+}
+
+impl VarIntReader for Cursor<Vec<u8>> {}
+
+impl BigEndianReader for Cursor<Vec<u8>> {}

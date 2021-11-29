@@ -1,10 +1,12 @@
-use std::io::{Cursor, Read};
+use std::io::{Cursor, Read, Error};
 use byteorder::{BigEndian, ByteOrder};
-use crate::error::{Result};
+use crate::error::{Result, TsFileError};
 use bit_set::BitSet;
 use crate::file::metadata::MetadataIndexNodeType::{InternalDevice, LeafDevice, InternalMeasurement, LeafMeasurement};
 use crate::error::TsFileError::General;
 use std::borrow::BorrowMut;
+use varint::{VARINT_32_MAX_BYTES, VarintRead};
+use crate::utils::io::{VarIntReader, BigEndianReader};
 
 #[derive(Debug)]
 pub struct TsFileMetadata {
@@ -12,31 +14,67 @@ pub struct TsFileMetadata {
     file_meta: FileMeta,
 }
 
+impl TsFileMetadata {
+    pub fn file_meta(&self) -> &FileMeta {
+        &self.file_meta
+    }
+}
+
 #[derive(Debug)]
 pub struct FileMeta {
     metadata_index: MetadataIndexNodeType,
-    total_chunk_num: i32,
-    invalid_chunk_num: i32,
-    version_info: Vec<(i64, i64)>,
     meta_offset: i64,
     bloom_filter: Option<BloomFilter>,
 }
+
+impl FileMeta {
+    pub fn bloom_filter(&self) -> &Option<BloomFilter> {
+        &self.bloom_filter
+    }
+
+    pub fn metadata_index(&self) -> &MetadataIndexNodeType { &self.metadata_index }
+}
+
 
 #[derive(Debug)]
 pub struct BloomFilter {
     minimal_size: i32,
     maximal_hash_function_size: i32,
-    seeds: Vec<i32>,
-    size: i32,
-    hash_function_size: i32,
+    seeds: Vec<u32>,
+    size: u32,
+    hash_function_size: u32,
     bits: BitSet,
     func: Vec<HashFunction>,
 }
 
+impl BloomFilter {
+    pub fn contains(&self, path: &str) -> bool {
+        if path.is_empty() {
+            return false;
+        }
+        let mut ret = true;
+        let mut index: usize = 0;
+        while ret && index < self.hash_function_size as usize {
+            ret = self.bits.contains(self.func[index].hash(path) as usize);
+            index += 1;
+        }
+        return ret;
+    }
+}
+
+
 #[derive(Debug)]
 pub struct HashFunction {
-    cap: i32,
-    seed: i32,
+    cap: u32,
+    seed: u32,
+}
+
+impl HashFunction {
+    pub fn hash(&self, path: &str) -> i32 {
+        let hash_data = murmurhash3::murmurhash3_x64_128(&mut path.as_bytes(), self.seed as u64);
+        let data = hash_data.0 as i32 + hash_data.1 as i32;
+        data % self.cap as i32
+    }
 }
 
 #[derive(Debug)]
@@ -67,73 +105,49 @@ impl TsFileMetadata {
     pub fn parser(mut data: Cursor<Vec<u8>>) -> Result<Self> {
         // metadataIndex
         let metadata_index = MetadataIndexNodeType::new(&mut data).unwrap();
-        // totalChunkNum
-        let mut buffer = vec![0; 4];
-        data.read(&mut buffer)?;
-        let total_chunk_num = BigEndian::read_i32(&buffer);
-        // invalidChunkNum
-        let mut buffer = vec![0; 4];
-        data.read(&mut buffer)?;
-        let invalid_chunk_num = BigEndian::read_i32(&buffer);
-
-        // versionInfo
-        let mut buffer = vec![0; 4];
-        data.read(&mut buffer)?;
-        let version_size = BigEndian::read_i32(&buffer);
-
-        let mut version_info = Vec::with_capacity(version_size as usize);
-
-        for _i in 0..version_size {
-            let mut buffer = vec![0; 8];
-            data.read(&mut buffer)?;
-            let version_pos = BigEndian::read_i64(&buffer);
-
-            let mut buffer = vec![0; 8];
-            data.read(&mut buffer)?;
-            let version = BigEndian::read_i64(&buffer);
-
-            version_info.push((version_pos, version));
-        }
-
         // metaOffset
-        let mut buffer = vec![0; 8];
-        data.read(&mut buffer)?;
-        let meta_offset = BigEndian::read_i64(&buffer);
+        let meta_offset = data.read_big_endian_i64();
 
         // read bloom filter
         let mut bloom_filter = None;
         let length = data.get_ref().capacity();
         if data.position() < length as u64 {
-            let mut buffer = vec![0; 4];
-            data.read(&mut buffer)?;
-            let byte_length = BigEndian::read_i32(&buffer);
+            match data.read_unsigned_varint_32() {
+                Ok(bloom_filter_size) => {
+                    let mut bytes = vec![0; bloom_filter_size as usize];
+                    data.read(&mut bytes)?;
 
-            let mut bytes = vec![0; byte_length as usize];
-            data.read(&mut bytes)?;
-
-            let mut buffer = vec![0; 4];
-            data.read(&mut buffer)?;
-            let filter_size = BigEndian::read_i32(&buffer);
-            let hash_function_size = BigEndian::read_i32(&buffer);
-            bloom_filter = Some(BloomFilter::new(bytes, filter_size, hash_function_size));
+                    let filter_size = data.read_unsigned_varint_32().unwrap();
+                    let hash_function_size = data.read_unsigned_varint_32().unwrap();
+                    bloom_filter = Some(BloomFilter::new(bytes, filter_size, hash_function_size));
+                    Ok(Self {
+                        size: 0,
+                        file_meta: FileMeta {
+                            metadata_index,
+                            meta_offset,
+                            bloom_filter,
+                        },
+                    })
+                }
+                Err(e) => {
+                    Err(TsFileError::General(e.to_string()))
+                }
+            }
+        } else {
+            Ok(Self {
+                size: 0,
+                file_meta: FileMeta {
+                    metadata_index,
+                    meta_offset,
+                    bloom_filter,
+                },
+            })
         }
-
-        Ok(Self {
-            size: 0,
-            file_meta: FileMeta {
-                metadata_index,
-                total_chunk_num,
-                invalid_chunk_num,
-                version_info,
-                meta_offset,
-                bloom_filter,
-            },
-        })
     }
 }
 
 impl BloomFilter {
-    pub fn new(data: Vec<u8>, filter_size: i32, hash_function_size: i32) -> Self {
+    pub fn new(data: Vec<u8>, filter_size: u32, hash_function_size: u32) -> Self {
         let seeds = vec![5, 7, 11, 19, 31, 37, 43, 59];
         let hash_function_size = std::cmp::min(8, hash_function_size);
 
@@ -156,7 +170,7 @@ impl BloomFilter {
 }
 
 impl HashFunction {
-    pub fn new(filter_size: i32, seed: i32) -> Self {
+    pub fn new(filter_size: u32, seed: u32) -> Self {
         Self {
             cap: filter_size,
             seed,
@@ -166,62 +180,52 @@ impl HashFunction {
 
 impl MetadataIndexNodeType {
     pub fn new(data: &mut Cursor<Vec<u8>>) -> Result<Self> {
-        let mut vec = vec![0; 4];
-        data.read(&mut vec)?;
+        match data.read_unsigned_varint_32() {
+            Ok(len) => {
+                let mut children: Vec<MetadataIndexEntry> = Vec::with_capacity(len as usize);
+                for _i in 0..len {
+                    children.push(MetadataIndexEntry::new(data.borrow_mut()).unwrap());
+                }
 
-        let len = BigEndian::read_i32(&vec);
+                let mut vec = vec![0; 8];
+                data.read(&mut vec)?;
+                let end_offset = BigEndian::read_i64(&vec);
 
-        let mut children: Vec<MetadataIndexEntry> = Vec::with_capacity(len as usize);
-        for _i in 0..len {
-            children.push(MetadataIndexEntry::new(data.borrow_mut()).unwrap());
-        }
+                let mut vec = vec![0; 1];
+                data.read(&mut vec)?;
 
-        let mut vec = vec![0; 8];
-        data.read(&mut vec)?;
-        let end_offset = BigEndian::read_i64(&vec);
-
-        let mut vec = vec![0; 1];
-        data.read(&mut vec)?;
-
-        let node = MetaDataIndexNode {
-            children,
-            end_offset,
-        };
-        match vec[0] {
-            0 => Ok(InternalDevice(node)),
-            1 => Ok(LeafDevice(node)),
-            2 => Ok(InternalMeasurement(node)),
-            3 => Ok(LeafMeasurement(node)),
-            _ => Err(General(format!("123")))
+                let node = MetaDataIndexNode {
+                    children,
+                    end_offset,
+                };
+                match vec[0] {
+                    0 => Ok(InternalDevice(node)),
+                    1 => Ok(LeafDevice(node)),
+                    2 => Ok(InternalMeasurement(node)),
+                    3 => Ok(LeafMeasurement(node)),
+                    _ => Err(General(format!("123")))
+                }
+            }
+            Err(e) => {
+                return Err(TsFileError::General(e.to_string()));
+            }
         }
     }
 }
 
 impl MetadataIndexEntry {
     fn new(data: &mut Cursor<Vec<u8>>) -> Result<Self> {
-        let mut vec = vec![0; 4];
-        data.read(&mut vec)?;
-
-        let str_len = BigEndian::read_i32(&vec);
-
-        if str_len < 0 {
-            return Err(General(format!("{}", 123)));
+        match data.readVarIntString() {
+            Ok(str) => {
+                Ok(Self {
+                    name: str,
+                    offset: data.read_big_endian_i64(),
+                })
+            }
+            Err(e) => {
+                Err(TsFileError::General(e.to_string()))
+            }
         }
-
-        if str_len == 0 {}
-
-        let mut vec: Vec<u8> = vec![0; str_len as usize];
-        data.read(&mut vec)?;
-        let result = String::from_utf8(vec).unwrap();
-
-        let mut vec = vec![0; 8];
-        data.read(&mut vec)?;
-        let offset = BigEndian::read_i64(&vec);
-
-        Ok(Self {
-            name: result,
-            offset,
-        })
     }
 }
 
