@@ -3,6 +3,7 @@ use std::io::Read;
 
 use crate::error::Result;
 use crate::file::metadata::{ChunkMetadata, TimeseriesMetadata, TsFileMetadata};
+use crate::file::tsfile_search_reader::DeviceIter;
 use crate::utils::io::FileSource;
 
 pub trait Length {
@@ -24,7 +25,7 @@ pub trait FileReader {
 
     fn all_devices(&mut self) -> &Vec<String>;
 
-    // fn get_device_iter(&self) -> Result<DeviceIter>;
+    fn get_device_iter(&self) -> Result<DeviceIter>;
 
     fn get_device_reader(&self, device_name: &str) -> Result<Box<dyn DeviceReader>>;
 

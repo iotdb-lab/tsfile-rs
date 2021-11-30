@@ -1,6 +1,6 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::convert::TryFrom;
-use std::fs::File;
+use std::fs::{File, read};
 use std::io::{Cursor, Read};
 use std::ops::Deref;
 use std::path::Path;
@@ -11,9 +11,9 @@ use std::sync::mpsc::channel;
 use crate::error::Result;
 use crate::error::TsFileError;
 use crate::file::footer;
-use crate::file::metadata::{MetaDataIndexNode, MetadataIndexNodeType, TsFileMetadata};
+use crate::file::metadata::{MetadataIndexEntry, MetaDataIndexNode, MetadataIndexNodeType, TsFileMetadata};
 use crate::file::metadata::MetadataIndexNodeType::{InternalDevice, LeafDevice};
-use crate::file::reader::{DeviceReader, FileReader, RowIter, SectionReader};
+use crate::file::reader::{DeviceReader, FileReader, RowIter, SectionReader, SensorReader};
 use crate::utils::queue::Queue;
 
 impl TryFrom<File> for TsFileSearchReader<File> {
@@ -103,9 +103,9 @@ impl<R: SectionReader> FileReader for TsFileSearchReader<R> {
         &self.all_devices
     }
 
-    // fn get_device_iter(&self) -> Result<DeviceIter> {
-    //     todo!()
-    // }
+    fn get_device_iter(&self) -> Result<DeviceIter> {
+        todo!()
+    }
 
     fn get_device_reader(&self, device_name: &str) -> Result<Box<dyn crate::file::reader::DeviceReader>> {
         todo!()
@@ -120,10 +120,71 @@ impl<R: SectionReader> FileReader for TsFileSearchReader<R> {
     }
 }
 
-// pub struct DeviceIter {
-//     reader: Option<DeviceReader>,
-//
-// }
+pub struct DeviceSearchReader<R: SectionReader> {
+    reader: Arc<R>,
+    stack: Vec<MetadataIndexNodeType>,
+}
+
+impl<R: SectionReader> DeviceSearchReader<R> {
+    fn new(reader: Arc<R>, stack: Vec<MetadataIndexNodeType>) -> Self {
+        Self {
+            reader,
+            stack,
+        }
+    }
+
+    fn get_device_meta_iter() -> Result<DeviceIter> {
+        Ok(DeviceIter {
+            devices: Vec::new()
+        })
+    }
+}
+
+
+pub struct DeviceIter {
+    devices: Vec<MetadataIndexNodeType::LeafDevice>,
+}
+
+impl DeviceIter {
+    pub fn new(reader: , root: MetadataIndexNodeType) -> Result<DeviceIter> {
+        let mut tree: Vec<MetadataIndexEntry> = Vec::new();
+        if let InternalDevice(metadata) = root {
+            let c = metadata.children();
+            let first = c.get(0)?.offset();
+
+            for i in c.len()..0 {
+                tree.push(c.get(i)?.clone());
+            }
+            let len = (first - c.get(c.len())?.offset()) as usize;
+
+            let mut reader = reader.get_read(first as u64, len as usize)?;
+            let mut data = vec![0; len];
+            reader.read_exact(&mut data);
+            let mut cursor = Cursor::new(data);
+
+            Ok(Self {
+                reader: None,
+                index_tree: tree,
+                cursor,
+            })
+        }
+        Err(TsFileError::General("123".to_string()));
+    }
+}
+
+impl Iterator for DeviceIter {
+    type Item = Result<Box<dyn DeviceReader>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cursor.is_empty() {
+            None
+        }
+        let result = MetadataIndexNodeType::new(&mut self.cursor);
+
+
+        None
+    }
+}
 
 
 impl<R: 'static + SectionReader> TsFileSearchReader<R> {

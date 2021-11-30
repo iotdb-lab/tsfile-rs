@@ -20,9 +20,9 @@ mod tests {
     fn it_works() {
         let path = "/Users/liudawei/allfiles/workspace/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
         if let Ok(mut reader) = TsFileSearchReader::try_from(path) {
-            // let x = reader.metadata();
+            let x = reader.metadata();
             // let file_meta = x.file_meta();
-            // let x1 = x.file_meta().metadata_index();
+            let x1 = x.file_meta().metadata_index();
             {
                 let x = reader.all_devices();
                 println!("{:?}", x);
