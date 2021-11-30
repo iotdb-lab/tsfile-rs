@@ -1,10 +1,11 @@
-use std::io::{Read, Seek, SeekFrom, Result, Cursor};
+use core::{cmp, fmt};
 use std::cell::RefCell;
-use core::{fmt, cmp};
-use crate::file::reader::{Length, TryClone};
-use varint::{VarintRead};
-use crate::error::TsFileError;
+use std::io::{Cursor, Read, Result, Seek, SeekFrom};
+
 use byteorder::{BigEndian, ByteOrder};
+use varint::VarintRead;
+
+use crate::file::reader::{Length, TryClone};
 
 const DEFAULT_BUF_SIZE: usize = 8 * 1024;
 
@@ -134,7 +135,7 @@ pub trait BigEndianReader: Read {
 
 
 pub trait VarIntReader: VarintRead {
-    fn readVarIntString(&mut self) -> Result<String> {
+    fn read_varint_string(&mut self) -> Result<String> {
         match self.read_unsigned_varint_32() {
             Ok(len) => {
                 let mut x: i32 = (len >> 1) as i32;
@@ -143,7 +144,7 @@ pub trait VarIntReader: VarintRead {
                 }
 
                 let mut data: Vec<u8> = vec![0; x as usize];
-                self.read(&mut data);
+                self.read_exact(&mut data)?;
                 Ok(String::from_utf8(data).unwrap())
             }
             Err(e) => {

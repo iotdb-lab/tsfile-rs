@@ -1,10 +1,9 @@
 use std::borrow::BorrowMut;
-use std::io::{Cursor, Error, Read};
-use std::rc::Rc;
+use std::io::{Cursor, Read};
 
 use bit_set::BitSet;
 use byteorder::{BigEndian, ByteOrder};
-use varint::{VARINT_32_MAX_BYTES, VarintRead};
+use varint::{VarintRead};
 
 use crate::error::{Result, TsFileError};
 use crate::error::TsFileError::General;
@@ -275,7 +274,7 @@ impl MetadataIndexNodeType {
 
 impl MetadataIndexEntry {
     fn new(data: &mut Cursor<Vec<u8>>) -> Result<Self> {
-        match data.readVarIntString() {
+        match data.read_varint_string() {
             Ok(str) => {
                 Ok(Self {
                     name: str,

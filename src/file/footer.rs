@@ -1,11 +1,12 @@
-use std::io::{Read, Cursor};
+use std::io::{Cursor, Read};
 
-use crate::FOOTER_SIZE;
+use byteorder::{BigEndian, ByteOrder};
+
 use crate::error::Result;
 use crate::error::TsFileError;
-use byteorder::{ByteOrder, BigEndian};
 use crate::file::metadata::TsFileMetadata;
-use crate::file::reader::{SectionReader};
+use crate::file::reader::SectionReader;
+use crate::FOOTER_SIZE;
 
 pub fn parser_metadata<R: SectionReader>(reader: &R) -> Result<TsFileMetadata> {
     let file_size = reader.len();

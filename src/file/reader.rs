@@ -2,8 +2,7 @@ use std::fs::File;
 use std::io::Read;
 
 use crate::error::Result;
-use crate::file::metadata::{ChunkMetadata, TimeseriesMetadata, TsFileMetadata};
-use crate::file::tsfile_search_reader::DeviceIter;
+use crate::file::metadata::{ChunkMetadata, MetadataIndexNodeType, TimeseriesMetadata, TsFileMetadata};
 use crate::utils::io::FileSource;
 
 pub trait Length {
@@ -23,15 +22,20 @@ pub trait SectionReader: Length {
 pub trait FileReader {
     fn metadata(&self) -> &TsFileMetadata;
 
-    fn all_devices(&mut self) -> &Vec<String>;
+    fn get_device_search_reader(&self) -> Box<dyn DeviceMetadataReader<Item=MetadataIndexNodeType>>;
+    // fn all_devices(&mut self) -> &Vec<String>;
 
-    fn get_device_iter(&self) -> Result<DeviceIter>;
+    // fn get_device_iter(&self) -> Result<DeviceIter>;
 
-    fn get_device_reader(&self, device_name: &str) -> Result<Box<dyn DeviceReader>>;
+    // fn get_device_reader(&self, device_name: &str) -> Result<Box<dyn DeviceReader>>;
+    //
+    // fn get_sensor_iter(&self, sensor_path: &str) -> Result<RowIter>;
+    //
+    // fn get_filter_iter(&self, sensor_path: &str, predicate: &dyn Fn(u64) -> bool) -> Result<RowIter>;
+}
 
-    fn get_sensor_iter(&self, sensor_path: &str) -> Result<RowIter>;
-
-    fn get_filter_iter(&self, sensor_path: &str, predicate: &dyn Fn(u64) -> bool) -> Result<RowIter>;
+pub trait DeviceMetadataReader: Iterator {
+    fn metadata(&self);
 }
 
 pub trait DeviceReader {
