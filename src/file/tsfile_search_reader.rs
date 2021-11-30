@@ -153,6 +153,8 @@ impl<R: SectionReader> Iterator for DeviceSearchReader<R> {
         if self.stack.is_empty() {
             return None;
         }
+        //当前使用的是广度优先，会先加载完成所有的中间节点！
+        //应当修改为stack 深度优先，一个一个分支加载
         while !self.stack.is_empty() {
             match self.stack.pop() {
                 InternalDevice(c) => {
@@ -165,7 +167,7 @@ impl<R: SectionReader> Iterator for DeviceSearchReader<R> {
                         let mut data = vec![0; len];
                         reader.read_exact(&mut data).ok();
                         let mut cursor = Cursor::new(data);
-
+                        //深度的时候，这里应该是从len到0入栈
                         for _ in 0..c.children().len() {
                             if let Ok(t) = MetadataIndexNodeType::new(&mut cursor) {
                                 self.stack.push(t)
