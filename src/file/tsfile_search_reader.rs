@@ -1,15 +1,20 @@
+use std::borrow::{Borrow, BorrowMut};
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{Cursor, Read};
+use std::ops::Deref;
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::mpsc::channel;
 
 use crate::error::Result;
 use crate::error::TsFileError;
 use crate::file::footer;
-use crate::file::metadata::{MetadataIndexNodeType, TsFileMetadata};
-use crate::file::metadata::MetadataIndexNodeType::InternalDevice;
-use crate::file::reader::{FileReader, RowIter, SectionReader};
+use crate::file::metadata::{MetaDataIndexNode, MetadataIndexNodeType, TsFileMetadata};
+use crate::file::metadata::MetadataIndexNodeType::{InternalDevice, LeafDevice};
+use crate::file::reader::{DeviceReader, FileReader, RowIter, SectionReader};
+use crate::utils::queue::Queue;
 
 impl TryFrom<File> for TsFileSearchReader<File> {
     type Error = TsFileError;
@@ -55,35 +60,52 @@ impl<R: SectionReader> FileReader for TsFileSearchReader<R> {
         &self.metadata
     }
 
-    fn all_devices(&self) -> &Vec<String> {
+    fn all_devices(&mut self) -> &Vec<String> {
         if self.all_devices.is_empty() {
+            let mut devices: Vec<String> = Vec::new();
             let index = self.metadata.file_meta().metadata_index();
-            match index {
-                InternalDevice(root) => {
-                    if let Some(start) = root.children().get(0) {
-                        let len = root.end_offset() - start.offset();
-                        if let Ok(mut sReader) = self
+            let mut queue: Queue<MetadataIndexNodeType> = Queue::new();
+            queue.push(index.clone());
+            while !queue.is_empty() {
+                let x = queue.pop();
+                match x {
+                    InternalDevice(c) => {
+                        let start = c.children().get(0).unwrap();
+                        let end = c.end_offset();
+                        let len = (end - start.offset()) as usize;
+                        if let Ok(mut reader) = self
                             .reader
-                            .get_read(start.offset() as u64, len as usize) {
-                            let mut data = vec![0; len as usize];
-                            sReader.read(&mut data)?;
-                            let mut cursor = Box::new(Cursor::new(data));
+                            .get_read(start.offset() as u64, len) {
+                            let mut data = vec![0; len];
+                            reader.read_exact(&mut data);
+                            let mut cursor = Cursor::new(data);
 
-                            for i in 0..root.children().len() {
-                                if let Ok(InternalDevice(c)) = MetadataIndexNodeType::new(&mut cursor) {
-
+                            for i in 0..c.children().len() {
+                                if let Ok(t) = MetadataIndexNodeType::new(&mut cursor) {
+                                    queue.push(t)
                                 }
                             }
-                            MetadataIndexNodeType::new()
                         }
                     }
+                    LeafDevice(m) => {
+                        m.children()
+                            .into_iter()
+                            .map(|x| x.name())
+                            .into_iter()
+                            .for_each(|x| devices.push(x.to_string()));
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
+            self.all_devices = devices
         }
 
         &self.all_devices
     }
+
+    // fn get_device_iter(&self) -> Result<DeviceIter> {
+    //     todo!()
+    // }
 
     fn get_device_reader(&self, device_name: &str) -> Result<Box<dyn crate::file::reader::DeviceReader>> {
         todo!()
@@ -97,6 +119,12 @@ impl<R: SectionReader> FileReader for TsFileSearchReader<R> {
         todo!()
     }
 }
+
+// pub struct DeviceIter {
+//     reader: Option<DeviceReader>,
+//
+// }
+
 
 impl<R: 'static + SectionReader> TsFileSearchReader<R> {
     pub fn new(file: R) -> Result<Self> {

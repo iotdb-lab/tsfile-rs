@@ -22,7 +22,9 @@ pub trait SectionReader: Length {
 pub trait FileReader {
     fn metadata(&self) -> &TsFileMetadata;
 
-    fn all_devices(&self) -> &Vec<String>;
+    fn all_devices(&mut self) -> &Vec<String>;
+
+    // fn get_device_iter(&self) -> Result<DeviceIter>;
 
     fn get_device_reader(&self, device_name: &str) -> Result<Box<dyn DeviceReader>>;
 

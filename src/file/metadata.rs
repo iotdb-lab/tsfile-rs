@@ -1,5 +1,6 @@
 use std::borrow::BorrowMut;
 use std::io::{Cursor, Error, Read};
+use std::rc::Rc;
 
 use bit_set::BitSet;
 use byteorder::{BigEndian, ByteOrder};
@@ -30,6 +31,14 @@ pub struct FileMeta {
 }
 
 impl FileMeta {
+    pub fn new(index: MetadataIndexNodeType, offset: i64, filter: Option<BloomFilter>) -> Self {
+        FileMeta {
+            metadata_index: index,
+            meta_offset: offset,
+            bloom_filter: filter,
+        }
+    }
+
     pub fn bloom_filter(&self) -> &Option<BloomFilter> {
         &self.bloom_filter
     }
@@ -87,6 +96,16 @@ pub enum MetadataIndexNodeType {
     LeafMeasurement(MetaDataIndexNode),
 }
 
+impl Clone for MetadataIndexNodeType {
+    fn clone(&self) -> Self {
+        match self {
+            InternalDevice(m) => { InternalDevice(m.clone()) }
+            LeafDevice(m) => { LeafDevice(m.clone()) }
+            InternalMeasurement(m) => { InternalMeasurement(m.clone()) }
+            LeafMeasurement(m) => { LeafMeasurement(m.clone()) }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct MetaDataIndexNode {
@@ -104,6 +123,21 @@ impl MetaDataIndexNode {
     }
 }
 
+impl Clone for MetaDataIndexNode {
+    fn clone(&self) -> Self {
+        let mut vec: Vec<MetadataIndexEntry> = Vec::with_capacity(self.children.len());
+        Vec::clone_from(&mut vec, self.children());
+        MetaDataIndexNode {
+            children: vec,
+            end_offset: self.end_offset,
+        }
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        todo!()
+    }
+}
+
 
 #[derive(Debug)]
 pub struct MetadataIndexEntry {
@@ -114,6 +148,20 @@ pub struct MetadataIndexEntry {
 impl MetadataIndexEntry {
     pub fn offset(&self) -> i64 {
         self.offset
+    }
+    pub fn name(&self) -> &str { self.name.as_str() }
+}
+
+impl Clone for MetadataIndexEntry {
+    fn clone(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            offset: self.offset.clone(),
+        }
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        todo!()
     }
 }
 
@@ -142,11 +190,7 @@ impl TsFileMetadata {
                     bloom_filter = Some(BloomFilter::new(bytes, filter_size, hash_function_size));
                     Ok(Self {
                         size: 0,
-                        file_meta: FileMeta {
-                            metadata_index,
-                            meta_offset,
-                            bloom_filter,
-                        },
+                        file_meta: FileMeta::new(metadata_index, meta_offset, bloom_filter),
                     })
                 }
                 Err(e) => {
@@ -156,11 +200,7 @@ impl TsFileMetadata {
         } else {
             Ok(Self {
                 size: 0,
-                file_meta: FileMeta {
-                    metadata_index,
-                    meta_offset,
-                    bloom_filter,
-                },
+                file_meta: FileMeta::new(metadata_index, meta_offset, bloom_filter),
             })
         }
     }
