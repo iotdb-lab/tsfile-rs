@@ -9,7 +9,7 @@ use crate::error::TsFileError;
 use crate::file::footer;
 use crate::file::metadata::{MetadataIndexNodeType, TsFileMetadata};
 use crate::file::metadata::MetadataIndexNodeType::*;
-use crate::file::reader::{DeviceMetadataReader, FileReader, SectionReader};
+use crate::file::reader::{DeviceMetadataIter, FileReader, SectionReader, SensorMetadataIter};
 use crate::utils::queue::Queue;
 
 impl TryFrom<File> for TsFileSearchReader<File> {
@@ -56,88 +56,36 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
         &self.metadata
     }
 
-    fn get_device_search_reader(&self) -> Box<dyn DeviceMetadataReader<Item=MetadataIndexNodeType>> {
-        let mut queue = Queue::new();
-        queue.push(self.metadata.file_meta().metadata_index().clone());
-        Box::new(DeviceSearchReader {
-            reader: self.reader.clone(),
-            stack: queue,
-        })
+    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item=MetadataIndexNodeType>> {
+        let mut stack = Vec::new();
+        stack.push(self.metadata.file_meta().metadata_index().clone());
+        Box::new(DeviceMetadataReader::new(self.reader.clone(), stack))
     }
 
-    // fn all_devices(&mut self) -> &Vec<String> {
-    //     if self.all_devices.is_empty() {
-    //         let mut devices: Vec<String> = Vec::new();
-    //         let index = self.metadata.file_meta().metadata_index();
-    //         let mut queue: Queue<MetadataIndexNodeType> = Queue::new();
-    //         queue.push(index.clone());
-    //         while !queue.is_empty() {
-    //             let x = queue.pop();
-    //             match x {
-    //                 InternalDevice(c) => {
-    //                     let start = c.children().get(0).unwrap();
-    //                     let end = c.end_offset();
-    //                     let len = (end - start.offset()) as usize;
-    //                     if let Ok(mut reader) = self
-    //                         .reader
-    //                         .get_read(start.offset() as u64, len) {
-    //                         let mut data = vec![0; len];
-    //                         reader.read_exact(&mut data);
-    //                         let mut cursor = Cursor::new(data);
-    //
-    //                         for i in 0..c.children().len() {
-    //                             if let Ok(t) = MetadataIndexNodeType::new(&mut cursor) {
-    //                                 queue.push(t)
-    //                             }
-    //                         }
-    //                     }
-    //                 }
-    //                 LeafDevice(m) => {
-    //                     m.children()
-    //                         .into_iter()
-    //                         .map(|x| x.name())
-    //                         .into_iter()
-    //                         .for_each(|x| devices.push(x.to_string()));
-    //                 }
-    //                 _ => {}
-    //             }
-    //         }
-    //         self.all_devices = devices
-    //     }
-    //
-    //     &self.all_devices
-    // }
-    //
-    // fn get_device_iter(&self) -> Result<DeviceIter> {
-    //     todo!()
-    // }
-    //
-    // fn get_device_reader(&self, device_name: &str) -> Result<Box<dyn crate::file::reader::DeviceReader>> {
-    //     todo!()
-    // }
-    //
-    // fn get_sensor_iter(&self, sensor_path: &str) -> Result<RowIter> {
-    //     todo!()
-    // }
-    //
-    // fn get_filter_iter(&self, sensor_path: &str, predicate: &dyn Fn(u64) -> bool) -> Result<RowIter> {
-    //     todo!()
-    // }
+    fn sensor_meta_iter(&self, device: &str) -> Box<dyn SensorMetadataIter<Item=MetadataIndexNodeType>> {
+        let mut stack = Vec::new();
+        stack.push(self.metadata.file_meta().metadata_index().clone());
+        Box::new(SensorMetadataReader::new(self.reader.clone(), stack, device))
+    }
 }
 
-pub struct DeviceSearchReader<R: SectionReader> {
+pub struct DeviceMetadataReader<R: SectionReader> {
     reader: Arc<R>,
-    stack: Queue<MetadataIndexNodeType>,
+    stack: Vec<MetadataIndexNodeType>,
 }
 
-impl<R: SectionReader> DeviceMetadataReader for DeviceSearchReader<R> {
-    fn metadata(&self) {
-        todo!()
-    }
+pub struct SensorMetadataReader<R: SectionReader> {
+    reader: Arc<R>,
+    stack: Vec<MetadataIndexNodeType>,
+    device: String,
 }
 
-impl<R: SectionReader> DeviceSearchReader<R> {
-    fn new(reader: Arc<R>, stack: Queue<MetadataIndexNodeType>) -> Self {
+impl<R: SectionReader> DeviceMetadataIter for DeviceMetadataReader<R> {}
+
+impl<R: SectionReader> SensorMetadataIter for SensorMetadataReader<R> {}
+
+impl<R: SectionReader> DeviceMetadataReader<R> {
+    pub fn new(reader: Arc<R>, stack: Vec<MetadataIndexNodeType>) -> Self {
         Self {
             reader,
             stack,
@@ -145,18 +93,25 @@ impl<R: SectionReader> DeviceSearchReader<R> {
     }
 }
 
+impl<R: SectionReader> SensorMetadataReader<R> {
+    pub fn new(reader: Arc<R>, stack: Vec<MetadataIndexNodeType>, device: String) -> Self {
+        Self {
+            reader,
+            stack,
+            device,
+        }
+    }
+}
 
-impl<R: SectionReader> Iterator for DeviceSearchReader<R> {
+impl<R: SectionReader> Iterator for DeviceMetadataReader<R> {
     type Item = MetadataIndexNodeType;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.stack.is_empty() {
             return None;
         }
-        //当前使用的是广度优先，会先加载完成所有的中间节点！
-        //应当修改为stack 深度优先，一个一个分支加载
         while !self.stack.is_empty() {
-            match self.stack.pop() {
+            match self.stack.pop()? {
                 InternalDevice(c) => {
                     let start = c.children().get(0).unwrap();
                     let end = c.end_offset();
@@ -167,11 +122,15 @@ impl<R: SectionReader> Iterator for DeviceSearchReader<R> {
                         let mut data = vec![0; len];
                         reader.read_exact(&mut data).ok();
                         let mut cursor = Cursor::new(data);
-                        //深度的时候，这里应该是从len到0入栈
+
+                        let mut types = Vec::new();
                         for _ in 0..c.children().len() {
                             if let Ok(t) = MetadataIndexNodeType::new(&mut cursor) {
-                                self.stack.push(t)
+                                types.push(t);
                             }
+                        }
+                        while !types.is_empty() {
+                            self.stack.push(types.pop()?);
                         }
                     }
                 }
@@ -183,8 +142,46 @@ impl<R: SectionReader> Iterator for DeviceSearchReader<R> {
         }
         None
     }
+}
 
+impl<R: SectionReader> Iterator for SensorMetadataReader<R> {
+    type Item = MetadataIndexNodeType;
 
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.stack.is_empty() {
+            return None;
+        }
+        while !self.stack.is_empty() {
+            match self.stack.pop()? {
+                InternalDevice(c) | InternalMeasurement(c) | LeafDevice(c) => {
+                    let start = c.children().get(0).unwrap();
+                    let end = c.end_offset();
+                    let len = (end - start.offset()) as usize;
+                    if let Ok(mut reader) = self
+                        .reader
+                        .get_read(start.offset() as u64, len) {
+                        let mut data = vec![0; len];
+                        reader.read_exact(&mut data).ok();
+                        let mut cursor = Cursor::new(data);
+
+                        let mut types = Vec::new();
+                        for _ in 0..c.children().len() {
+                            if let Ok(t) = MetadataIndexNodeType::new(&mut cursor) {
+                                types.push(t);
+                            }
+                        }
+                        while !types.is_empty() {
+                            self.stack.push(types.pop()?);
+                        }
+                    }
+                }
+                LeafMeasurement(c) => {
+                    return Some(MetadataIndexNodeType::LeafMeasurement(c));
+                }
+            }
+        }
+        None
+    }
 }
 
 

@@ -14,17 +14,18 @@ mod tests {
     use std::convert::TryFrom;
 
     use crate::file::metadata::MetadataIndexNodeType::LeafDevice;
-    use crate::file::reader::{DeviceMetadataReader, FileReader};
+    use crate::file::reader::{DeviceMetadataIter, FileReader};
     use crate::file::tsfile_search_reader::TsFileSearchReader;
 
     #[test]
     fn it_works() {
-        let path = "/Users/liudawei/allfiles/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
+        let path = "/Users/liudawei/allfiles/workspace/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
         if let Ok(mut reader) = TsFileSearchReader::try_from(path) {
             // let x = reader.metadata();
             // let file_meta = x.file_meta();
-            let mut x2 = reader.get_device_search_reader();
-            x2.into_iter().for_each(|x| println!("{:?}", x)
+            let mut x2 = reader.sensor_meta_iter("root.group_0.d_0");
+            x2.into_iter()
+                .for_each(|x| println!("{:?}", x)
 
                                     //                     if let Some(x1) = x {
                                     // match x1 {

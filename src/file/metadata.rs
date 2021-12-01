@@ -3,7 +3,7 @@ use std::io::{Cursor, Read};
 
 use bit_set::BitSet;
 use byteorder::{BigEndian, ByteOrder};
-use varint::{VarintRead};
+use varint::VarintRead;
 
 use crate::error::{Result, TsFileError};
 use crate::error::TsFileError::General;
