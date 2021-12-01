@@ -1,7 +1,7 @@
 use std::fs::File;
-use std::io::Read;
+use std::io::{Cursor, Read};
 
-use crate::error::Result;
+use crate::error::{Result, TsFileError};
 use crate::file::metadata::{ChunkMetadata, MetadataIndexEntry, MetadataIndexNodeType, TimeseriesMetadata, TsFileMetadata};
 use crate::utils::io::FileSource;
 
@@ -17,6 +17,7 @@ pub trait TryClone: Sized {
 pub trait SectionReader: Length {
     type T: Read;
     fn get_read(&self, start: u64, len: usize) -> Result<Self::T>;
+    fn get_cursor(&self, start: u64, len: usize) -> Result<Cursor<Vec<u8>>>;
 }
 
 pub trait FileReader {
@@ -75,6 +76,17 @@ impl SectionReader for File {
 
     fn get_read(&self, start: u64, length: usize) -> Result<Self::T> {
         Ok(FileSource::new(self, start, length))
+    }
+
+    fn get_cursor(&self, start: u64, len: usize) -> Result<Cursor<Vec<u8>>> {
+        match self.get_read(start, len) {
+            Ok(mut reader) => {
+                let mut data = vec![0; len];
+                reader.read_exact(&mut data);
+                Ok(Cursor::new(data))
+            }
+            Err(e) => { Err(e) }
+        }
     }
 }
 

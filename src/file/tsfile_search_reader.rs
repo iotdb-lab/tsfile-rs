@@ -212,13 +212,7 @@ impl<R: SectionReader> Iterator for SensorMetadataReader<R> {
                     let start = c.children().get(0).unwrap();
                     let end = c.end_offset();
                     let len = (end - start.offset()) as usize;
-                    if let Ok(mut reader) = self
-                        .reader
-                        .get_read(start.offset() as u64, len) {
-                        let mut data = vec![0; len];
-                        reader.read_exact(&mut data).ok();
-                        let mut cursor = Cursor::new(data);
-
+                    if let Ok(mut cursor) = self.reader.get_cursor(start.offset() as u64, len) {
                         let mut types = Vec::new();
                         for _ in 0..c.children().len() {
                             if let Ok(t) = MetadataIndexNodeType::new(&mut cursor) {
