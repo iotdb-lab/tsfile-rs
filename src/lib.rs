@@ -19,42 +19,15 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let path = "/Users/liudawei/allfiles/workspace/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
+        let path = "/Users/liudawei/allfiles/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
         if let Ok(mut reader) = TsFileSearchReader::try_from(path) {
             // let x = reader.metadata();
             // let file_meta = x.file_meta();
-            let mut x2 = reader.sensor_meta_iter("root.group_0.d_0");
-            x2.into_iter()
-                .for_each(|x| println!("{:?}", x)
+            let root = reader.metadata().file_meta().metadata_index();
+            let option = reader.binary_search_meta(root.clone(), "root.group_0.d_0".to_string(), "s_0".to_string());
+            // reader.device_meta_iter()
 
-                                    //                     if let Some(x1) = x {
-                                    // match x1 {
-                                    //     LeafDevice(e) => {
-                                    //
-                                    //     }
-                                    //     _ => {}
-                                    // }
-            );
-
-            // println!("{:?}", x);
-            // let x1 = x.file_meta().metadata_index();
-            // {
-            //     // let x = reader.all_devices();
-            //     println!("{:?}", x);
-            // }
-            // match x1 {
-            //
-            // }
-            // println!("{:?}", x1);
-            //
-            // if let Some(bf) = file_meta.bloom_filter() {
-            //     if bf.contains("root.group_0.d_0") {
-            //         println!("xxxxxxxxx:{:?}", 1);
-            //     };
-            // }
-            // let r1 = File::open(&Path::new(path)).unwrap();
-            // let metadata = parser_metadata(r1);
-            // println!("{:?}", metadata);
+            println!("{:?}", option)
         }
     }
 }

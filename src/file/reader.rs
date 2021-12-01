@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::Read;
 
 use crate::error::Result;
-use crate::file::metadata::{ChunkMetadata, MetadataIndexNodeType, TimeseriesMetadata, TsFileMetadata};
+use crate::file::metadata::{ChunkMetadata, MetadataIndexEntry, MetadataIndexNodeType, TimeseriesMetadata, TsFileMetadata};
 use crate::utils::io::FileSource;
 
 pub trait Length {
@@ -22,9 +22,11 @@ pub trait SectionReader: Length {
 pub trait FileReader {
     fn metadata(&self) -> &TsFileMetadata;
 
+    fn binary_search_meta(&self, root: MetadataIndexNodeType, device: String, sensor: String) -> Option<(MetadataIndexEntry, i64)>;
+
     fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item=MetadataIndexNodeType>>;
 
-    fn sensor_meta_iter(&self, device: &str) -> Box<dyn SensorMetadataIter<Item=MetadataIndexNodeType>>;
+    fn sensor_meta_iter(&self, device: String) -> Box<dyn SensorMetadataIter<Item=MetadataIndexNodeType>>;
     //
     // fn get_filter_iter(&self, sensor_path: &str, predicate: &dyn Fn(u64) -> bool) -> Result<RowIter>;
 }
