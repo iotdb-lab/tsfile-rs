@@ -56,6 +56,10 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
         &self.metadata
     }
 
+    fn search_device_meta(root: MetadataIndexNodeType, path: String) -> MetadataIndexNodeType {
+
+    }
+
     fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item=MetadataIndexNodeType>> {
         let mut stack = Vec::new();
         stack.push(self.metadata.file_meta().metadata_index().clone());
@@ -153,7 +157,9 @@ impl<R: SectionReader> Iterator for SensorMetadataReader<R> {
         }
         while !self.stack.is_empty() {
             match self.stack.pop()? {
-                InternalDevice(c) | InternalMeasurement(c) | LeafDevice(c) => {
+                InternalDevice(c)
+                | InternalMeasurement(c)
+                | LeafDevice(c) => {
                     let start = c.children().get(0).unwrap();
                     let end = c.end_offset();
                     let len = (end - start.offset()) as usize;
