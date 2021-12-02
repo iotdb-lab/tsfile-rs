@@ -164,7 +164,14 @@ impl Clone for MetadataIndexEntry {
     }
 }
 
+#[derive(Debug)]
 pub struct TimeseriesMetadata {}
+
+impl TimeseriesMetadata {
+    pub fn new(cursor: &mut Cursor<Vec<u8>>) -> Result<TimeseriesMetadata> {
+        todo!()
+    }
+}
 
 pub struct ChunkMetadata {}
 
@@ -246,11 +253,9 @@ impl MetadataIndexNodeType {
                     children.push(MetadataIndexEntry::new(data.borrow_mut()).unwrap());
                 }
 
-                let mut vec = vec![0; 8];
-                data.read(&mut vec)?;
-                let end_offset = BigEndian::read_i64(&vec);
+                let end_offset = data.read_big_endian_i64();
 
-                let mut vec = vec![0; 1];
+                let mut vec = vec![255; 1];
                 data.read(&mut vec)?;
 
                 let node = MetaDataIndexNode {

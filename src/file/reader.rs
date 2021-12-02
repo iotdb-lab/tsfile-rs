@@ -27,7 +27,7 @@ pub trait FileReader {
 
     fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item=MetadataIndexNodeType>>;
 
-    fn sensor_meta_iter(&self, device: String) -> Box<dyn SensorMetadataIter<Item=MetadataIndexNodeType>>;
+    fn sensor_meta_iter(&self, device: String) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>>;
     //
     // fn get_filter_iter(&self, sensor_path: &str, predicate: &dyn Fn(u64) -> bool) -> Result<RowIter>;
 }

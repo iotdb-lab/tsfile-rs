@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::error::Result;
 use crate::error::TsFileError;
 use crate::file::footer;
-use crate::file::metadata::{MetadataIndexEntry, MetaDataIndexNode, MetadataIndexNodeType, TsFileMetadata};
+use crate::file::metadata::{MetadataIndexEntry, MetaDataIndexNode, MetadataIndexNodeType, TimeseriesMetadata, TsFileMetadata};
 use crate::file::metadata::MetadataIndexNodeType::*;
 use crate::file::reader::{DeviceMetadataIter, FileReader, SectionReader, SensorMetadataIter};
 use crate::utils::queue::Queue;
@@ -113,7 +113,7 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
         Box::new(DeviceMetadataReader::new(self.reader.clone(), stack))
     }
 
-    fn sensor_meta_iter(&self, device: String) -> Box<dyn SensorMetadataIter<Item=MetadataIndexNodeType>> {
+    fn sensor_meta_iter(&self, device: String) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>> {
         let mut stack = Vec::new();
         stack.push(self.metadata.file_meta().metadata_index().clone());
         Box::new(SensorMetadataReader::new(self.reader.clone(), stack, device))
@@ -169,13 +169,9 @@ impl<R: SectionReader> Iterator for DeviceMetadataReader<R> {
                     let start = c.children().get(0).unwrap();
                     let end = c.end_offset();
                     let len = (end - start.offset()) as usize;
-                    if let Ok(mut reader) = self
+                    if let Ok(mut cursor) = self
                         .reader
-                        .get_read(start.offset() as u64, len) {
-                        let mut data = vec![0; len];
-                        reader.read_exact(&mut data).ok();
-                        let mut cursor = Cursor::new(data);
-
+                        .get_cursor(start.offset() as u64, len) {
                         let mut types = Vec::new();
                         for _ in 0..c.children().len() {
                             if let Ok(t) = MetadataIndexNodeType::new(&mut cursor) {
@@ -198,34 +194,68 @@ impl<R: SectionReader> Iterator for DeviceMetadataReader<R> {
 }
 
 impl<R: SectionReader> Iterator for SensorMetadataReader<R> {
-    type Item = MetadataIndexNodeType;
+    type Item = TimeseriesMetadata;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.stack.is_empty() {
             return None;
         }
+
         while !self.stack.is_empty() {
             match self.stack.pop()? {
-                InternalDevice(c)
-                | InternalMeasurement(c)
-                | LeafDevice(c) => {
-                    let start = c.children().get(0).unwrap();
-                    let end = c.end_offset();
-                    let len = (end - start.offset()) as usize;
-                    if let Ok(mut cursor) = self.reader.get_cursor(start.offset() as u64, len) {
+                InternalDevice(c) | LeafDevice(c) => {
+                    let index = match c.children()
+                        .binary_search_by(|x| x.name().cmp(&self.device)) {
+                        Ok(r) => { r }
+                        Err(r) => { if r == 0 { return None; } else { r - 1 } }
+                    };
+
+                    let child_num = c.children().len();
+
+                    let start = c.children().get(index)?.offset();
+                    let len = if index == child_num - 1 {
+                        c.end_offset() - start
+                    } else {
+                        c.children().get(index + 1)?.offset() - start
+                    };
+                    if let Ok(mut cursor) = self.reader.get_cursor(start as u64, len as usize) {
+                        if let Ok(t) = MetadataIndexNodeType::new(&mut cursor) {
+                            self.stack.push(t);
+                        }
+                    }
+                }
+                InternalMeasurement(c) => {
+                    let start = c.children().get(0)?.offset();
+                    let len = c.end_offset() - start;
+                    let child_num = c.children().len();
+
+                    if let Ok(mut cursor) = self.reader.get_cursor(start as u64, len as usize) {
                         let mut types = Vec::new();
-                        for _ in 0..c.children().len() {
+                        for _ in 0..child_num {
                             if let Ok(t) = MetadataIndexNodeType::new(&mut cursor) {
                                 types.push(t);
                             }
                         }
                         while !types.is_empty() {
-                            self.stack.push(types.pop()?);
+                            if let Some(data) = types.pop() {
+                                self.stack.push(data);
+                            }
                         }
                     }
                 }
                 LeafMeasurement(c) => {
-                    return Some(MetadataIndexNodeType::LeafMeasurement(c));
+                    let start = c.children().get(0).unwrap();
+                    let end = c.end_offset();
+                    let len = (end - start.offset()) as usize;
+                    if let Ok(mut cursor) = self
+                        .reader
+                        .get_cursor(start.offset() as u64, len) {
+                        for _ in 0..c.children().len() {
+                            if let Ok(t) = TimeseriesMetadata::new(&mut cursor) {
+                               return None;
+                            }
+                        }
+                    }
                 }
             }
         }
