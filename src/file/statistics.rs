@@ -2,7 +2,7 @@ use std::borrow::BorrowMut;
 use std::convert::TryFrom;
 use std::io::{Cursor, Read};
 
-use byteorder::ReadBytesExt;
+use byteorder::{BigEndian, ReadBytesExt};
 use varint::VarintRead;
 
 use crate::error::TsFileError;
@@ -50,7 +50,7 @@ pub struct LongStatistics {
     max_value: i64,
     first_value: i64,
     last_value: i64,
-    sum_value: i64,
+    sum_value: f64,
 }
 
 #[derive(Debug)]
@@ -70,7 +70,7 @@ pub struct FloatStatistics {
     max_value: f32,
     first_value: f32,
     last_value: f32,
-    sum_value: f32,
+    sum_value: f64,
 }
 
 
@@ -119,26 +119,47 @@ impl TryFrom<&'_ mut Cursor<Vec<u8>>> for IntegerStatistics {
 
 
 impl TryFrom<&'_ mut Cursor<Vec<u8>>> for FloatStatistics {
-    type Error = ();
+    type Error = TsFileError;
 
-    fn try_from(value: &'_ mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
-        todo!()
+    fn try_from(cursor: &'_ mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            header: StatisticHeader::try_from(cursor.borrow_mut())?,
+            min_value: cursor.read_f32::<BigEndian>()?,
+            max_value: cursor.read_f32::<BigEndian>()?,
+            first_value: cursor.read_f32::<BigEndian>()?,
+            last_value: cursor.read_f32::<BigEndian>()?,
+            sum_value: cursor.read_f64::<BigEndian>()?,
+        })
     }
 }
 
 impl TryFrom<&'_ mut Cursor<Vec<u8>>> for DoubleStatistics {
-    type Error = ();
+    type Error = TsFileError;
 
-    fn try_from(value: &'_ mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
-        todo!()
+    fn try_from(cursor: &'_ mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            header: StatisticHeader::try_from(cursor.borrow_mut())?,
+            min_value: cursor.read_f64::<BigEndian>()?,
+            max_value: cursor.read_f64::<BigEndian>()?,
+            first_value: cursor.read_f64::<BigEndian>()?,
+            last_value: cursor.read_f64::<BigEndian>()?,
+            sum_value: cursor.read_f64::<BigEndian>()?,
+        })
     }
 }
 
 impl TryFrom<&'_ mut Cursor<Vec<u8>>> for LongStatistics {
-    type Error = ();
+    type Error = TsFileError;
 
-    fn try_from(value: &'_ mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
-        todo!()
+    fn try_from(cursor: &'_ mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            header: StatisticHeader::try_from(cursor.borrow_mut())?,
+            min_value: cursor.read_i64::<BigEndian>()?,
+            max_value: cursor.read_i64::<BigEndian>()?,
+            first_value: cursor.read_i64::<BigEndian>()?,
+            last_value: cursor.read_i64::<BigEndian>()?,
+            sum_value: cursor.read_f64::<BigEndian>()?,
+        })
     }
 }
 
@@ -159,9 +180,7 @@ impl Statistic<'_> for DoubleStatistics {}
 
 impl Statistic<'_> for LongStatistics {}
 
-
 impl Statistic<'_> for BinaryStatistics {}
-
 
 impl Statistic<'_> for StatisticHeader {}
 

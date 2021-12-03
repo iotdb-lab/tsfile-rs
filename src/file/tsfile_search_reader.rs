@@ -209,7 +209,7 @@ impl<R: SectionReader> Iterator for SensorMetadataReader<R> {
 
         while !self.stack.is_empty() {
             match self.stack.pop()? {
-                InternalDevice(c) => {
+                InternalDevice(c) | LeafDevice(c) => {
                     let index = match c.children()
                         .binary_search_by(|x| x.name().cmp(&self.device)) {
                         Ok(r) => { r }
@@ -227,29 +227,6 @@ impl<R: SectionReader> Iterator for SensorMetadataReader<R> {
                     if let Ok(mut cursor) = self.reader.get_cursor(start as u64, len as usize) {
                         if let Ok(t) = MetadataIndexNodeType::new(&mut cursor) {
                             self.stack.push(t);
-                        }
-                    }
-                }
-                LeafDevice(c) => {
-                    let index = match c.children()
-                        .binary_search_by(|x| x.name().cmp(&self.device)) {
-                        Ok(r) => { r }
-                        Err(r) => { if r == 0 { return None; } else { r - 1 } }
-                    };
-
-                    let child_num = c.children().len();
-
-                    let start = c.children().get(index)?.offset();
-                    let len = if index == child_num - 1 {
-                        c.end_offset() - start
-                    } else {
-                        c.children().get(index + 1)?.offset() - start
-                    };
-                    if let Ok(mut cursor) = self.reader.get_cursor(start as u64, len as usize) {
-                        for i in 0..c.children().len() {
-                            if let Ok(t) = MetadataIndexNodeType::new(&mut cursor) {
-                                self.stack.push(t);
-                            }
                         }
                     }
                 }
@@ -280,8 +257,11 @@ impl<R: SectionReader> Iterator for SensorMetadataReader<R> {
                         if let Ok(mut cursor) = self
                             .reader
                             .get_cursor(start.offset() as u64, len) {
-                            if let Ok(t) = TimeseriesMetadataType::new(&mut cursor) {
-                                self.ts_stack.push(t);
+                            while cursor.position() < len as u64 {
+                                println!("222 ->{:?}", cursor.position());
+                                if let Ok(t) = TimeseriesMetadataType::new(&mut cursor) {
+                                    self.ts_stack.push(t);
+                                }
                             }
                         }
                     }
@@ -291,52 +271,6 @@ impl<R: SectionReader> Iterator for SensorMetadataReader<R> {
         self.ts_stack.pop()
     }
 }
-
-
-// pub struct DeviceIter {
-//     devices: Vec<MetadataIndexNodeType::LeafDevice>,
-// }
-//
-// impl DeviceIter {
-//     pub fn new(reader: , root: MetadataIndexNodeType) -> Result<DeviceIter> {
-//         let mut tree: Vec<MetadataIndexEntry> = Vec::new();
-//         if let InternalDevice(metadata) = root {
-//             let c = metadata.children();
-//             let first = c.get(0)?.offset();
-//
-//             for i in c.len()..0 {
-//                 tree.push(c.get(i)?.clone());
-//             }
-//             let len = (first - c.get(c.len())?.offset()) as usize;
-//
-//             let mut reader = reader.get_read(first as u64, len as usize)?;
-//             let mut data = vec![0; len];
-//             reader.read_exact(&mut data);
-//             let mut cursor = Cursor::new(data);
-//
-//             Ok(Self {
-//                 reader: None,
-//                 index_tree: tree,
-//                 cursor,
-//             })
-//         }
-//         Err(TsFileError::General("123".to_string()));
-//     }
-// }
-//
-// impl Iterator for DeviceIter {
-//     type Item = Result<Box<dyn DeviceReader>>;
-//
-//     fn next(&mut self) -> Option<Self::Item> {
-//         if self.cursor.is_empty() {
-//             None
-//         }
-//         let result = MetadataIndexNodeType::new(&mut self.cursor);
-//
-//
-//         None
-//     }
-// }
 
 impl<R: 'static + SectionReader> TsFileSearchReader<R> {
     pub fn new(file: R) -> Result<Self> {

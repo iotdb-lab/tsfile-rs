@@ -198,9 +198,9 @@ impl TimeseriesMetadataType {
             _ => { TimeseriesMetadataType::MoreChunks }
         };
 
+        let end_pos = cursor.position() + chunk_metadata_list_size as u64;
         let mut chunk_metadata_list = Vec::new();
-        let i = chunk_metadata_list_size as u64 - cursor.position();
-        while cursor.position() <= i {
+        while cursor.position() < end_pos {
             chunk_metadata_list.push(
                 ChunkMetadata::new(measurement_id.clone(), cursor.borrow_mut(),
                                    &metadata_type, data_type.clone())?);
@@ -250,6 +250,17 @@ impl TSDataType {
             _ => { Err(TsFileError::General("123".to_string())) }
         }
     }
+
+    fn int_id(&self) -> u8 {
+        match self {
+            Boolean(_) => { 0 }
+            TSDataType::Int32(_) => { 1 }
+            TSDataType::Int64(_) => { 2 }
+            TSDataType::FLOAT(_) => { 3 }
+            TSDataType::DOUBLE(_) => { 4 }
+            TSDataType::TEXT(_) => { 5 }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -265,7 +276,9 @@ impl ChunkMetadata {
 
         let ts_data_type = match meta_type {
             OneChunk => { data_type }
-            MoreChunks => { Arc::new(TSDataType::new(1, cursor)?) }
+            MoreChunks => {
+                Arc::new(TSDataType::new(data_type.int_id(), cursor)?)
+            }
         };
 
         Ok(Self {
