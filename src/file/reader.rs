@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{Cursor, Read};
 
 use crate::error::{Result, TsFileError};
-use crate::file::metadata::{ChunkMetadata, MetadataIndexEntry, MetadataIndexNodeType, TimeseriesMetadata, TsFileMetadata};
+use crate::file::metadata::{ChunkMetadata, MetadataIndexEntry, MetadataIndexNodeType, TimeseriesMetadata, TimeseriesMetadataType, TsFileMetadata};
 use crate::utils::io::FileSource;
 
 pub trait Length {

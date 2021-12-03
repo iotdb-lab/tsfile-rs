@@ -2,9 +2,10 @@ use core::{cmp, fmt};
 use std::cell::RefCell;
 use std::io::{Cursor, Read, Result, Seek, SeekFrom};
 
-use byteorder::{BigEndian, ByteOrder};
+use byteorder::{BigEndian, ByteOrder, ReadBytesExt};
 use varint::VarintRead;
 
+use crate::error::TsFileError;
 use crate::file::reader::{Length, TryClone};
 
 const DEFAULT_BUF_SIZE: usize = 8 * 1024;
@@ -130,6 +131,14 @@ pub trait BigEndianReader: Read {
         let mut vec = vec![0; 8];
         self.read(&mut vec).unwrap();
         BigEndian::read_i64(&vec)
+    }
+
+    fn read_bool(&mut self) -> bool {
+        let result = self.read_u8().unwrap();
+        match result {
+            0 => false,
+            _ => true
+        }
     }
 }
 
