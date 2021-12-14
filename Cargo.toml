@@ -1,10 +1,14 @@
 [package]
-name = "tsfile-rs"
-version = "0.1.0"
+name = "tsfile"
+version = "0.0.1"
 authors = ["liudw <liudw@apache.org>"]
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+edition = "2021"
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/iotdb-lab/tsfile-rs"
+documentation = "https://docs.rs/iotdb"
+description = "Apache IoTDB TsFile written in Rust"
+keywords = ["tsfile", "iotdb", "lib", "db"]
 
 [workspace]
 

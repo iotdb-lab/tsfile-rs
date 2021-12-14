@@ -23,13 +23,15 @@ pub trait SectionReader: Length {
 pub trait FileReader {
     fn metadata(&self) -> &TsFileMetadata;
 
-    fn binary_search_meta(&self, root: MetadataIndexNodeType, device: String, sensor: String) -> Option<(MetadataIndexEntry, i64)>;
+    // fn binary_search_meta(&self, root: MetadataIndexNodeType, device: String, sensor: String) -> Option<(MetadataIndexEntry, i64)>;
 
     fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item=MetadataIndexNodeType>>;
 
+    fn get_device_reader();
+
     fn sensor_meta_iter(&self, device: String) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>>;
-    //
-    // fn get_filter_iter(&self, sensor_path: &str, predicate: &dyn Fn(u64) -> bool) -> Result<RowIter>;
+
+    fn get_sensor_reader(&self, device: String, sensor: String) -> Box<dyn SensorReader>;
 }
 
 pub trait DeviceMetadataIter: Iterator {}

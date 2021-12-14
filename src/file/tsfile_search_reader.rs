@@ -10,7 +10,7 @@ use crate::error::TsFileError;
 use crate::file::footer;
 use crate::file::metadata::{MetadataIndexEntry, MetaDataIndexNode, MetadataIndexNodeType, TimeseriesMetadata, TimeseriesMetadataType, TsFileMetadata};
 use crate::file::metadata::MetadataIndexNodeType::*;
-use crate::file::reader::{DeviceMetadataIter, FileReader, SectionReader, SensorMetadataIter};
+use crate::file::reader::{DeviceMetadataIter, FileReader, SectionReader, SensorMetadataIter, SensorReader};
 use crate::utils::queue::Queue;
 
 impl TryFrom<File> for TsFileSearchReader<File> {
@@ -57,55 +57,55 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
         &self.metadata
     }
 
-    fn binary_search_meta(&self, root: MetadataIndexNodeType, device: String, sensor: String) -> Option<(MetadataIndexEntry, i64)> {
-        let binary_search = |c: &MetaDataIndexNode, calc: Box<Fn(&MetadataIndexEntry) -> Ordering>| -> Option<(i64, i64, usize)> {
-            let index = match c.children()
-                .binary_search_by(calc) {
-                Ok(r) => { r }
-                Err(r) => { if r == 0 { return None; } else { r - 1 } }
-            };
-            let start = c.children().get(index)?.offset();
-            let len = if index == c.children().len() - 1 {
-                c.end_offset() - start
-            } else {
-                c.children().get(index + 1)?.offset() - start
-            };
-            Some((start, len, index))
-        };
-
-
-        let mut stack = Vec::new();
-        stack.push(root);
-        while !stack.is_empty() {
-            let index = match stack.pop()? {
-                InternalDevice(c) | LeafDevice(c) | InternalMeasurement(c) => {
-                    binary_search(&c, Box::new(|x| x.name().cmp(&device)))
-                }
-                LeafMeasurement(c) => {
-                    return match binary_search(&c, Box::new(|x| x.name().cmp(&sensor))) {
-                        None => { None }
-                        Some((_, len, index)) => {
-                            Some((c.children().get(index)?.clone(), len))
-                        }
-                    };
-                }
-            };
-            match index {
-                None => { return None; }
-                Some((s, len, _)) => {
-                    if let Ok(mut reader) = self.reader.get_read(s as u64, len as usize)
-                    {
-                        let mut data = vec![0; len as usize];
-                        reader.read_exact(&mut data);
-                        if let Ok(result) = MetadataIndexNodeType::new(&mut Cursor::new(data)) {
-                            stack.push(result);
-                        }
-                    }
-                }
-            }
-        }
-        None
-    }
+    // fn binary_search_meta(&self, root: MetadataIndexNodeType, device: String, sensor: String) -> Option<(MetadataIndexEntry, i64)> {
+    //     let binary_search = |c: &MetaDataIndexNode, calc: Box<Fn(&MetadataIndexEntry) -> Ordering>| -> Option<(i64, i64, usize)> {
+    //         let index = match c.children()
+    //             .binary_search_by(calc) {
+    //             Ok(r) => { r }
+    //             Err(r) => { if r == 0 { return None; } else { r - 1 } }
+    //         };
+    //         let start = c.children().get(index)?.offset();
+    //         let len = if index == c.children().len() - 1 {
+    //             c.end_offset() - start
+    //         } else {
+    //             c.children().get(index + 1)?.offset() - start
+    //         };
+    //         Some((start, len, index))
+    //     };
+    //
+    //
+    //     let mut stack = Vec::new();
+    //     stack.push(root);
+    //     while !stack.is_empty() {
+    //         let index = match stack.pop()? {
+    //             InternalDevice(c) | LeafDevice(c) | InternalMeasurement(c) => {
+    //                 binary_search(&c, Box::new(|x| x.name().cmp(&device)))
+    //             }
+    //             LeafMeasurement(c) => {
+    //                 return match binary_search(&c, Box::new(|x| x.name().cmp(&sensor))) {
+    //                     None => { None }
+    //                     Some((_, len, index)) => {
+    //                         Some((c.children().get(index)?.clone(), len))
+    //                     }
+    //                 };
+    //             }
+    //         };
+    //         match index {
+    //             None => { return None; }
+    //             Some((s, len, _)) => {
+    //                 if let Ok(mut reader) = self.reader.get_read(s as u64, len as usize)
+    //                 {
+    //                     let mut data = vec![0; len as usize];
+    //                     reader.read_exact(&mut data);
+    //                     if let Ok(result) = MetadataIndexNodeType::new(&mut Cursor::new(data)) {
+    //                         stack.push(result);
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     None
+    // }
 
     fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item=MetadataIndexNodeType>> {
         let mut stack = Vec::new();
@@ -117,6 +117,10 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
         let mut stack = Vec::new();
         stack.push(self.metadata.file_meta().metadata_index().clone());
         Box::new(SensorMetadataReader::new(self.reader.clone(), stack, device))
+    }
+
+    fn get_sensor_reader(&self, device: String, sensor: String) -> Box<dyn SensorReader> {
+        todo!()
     }
 }
 
