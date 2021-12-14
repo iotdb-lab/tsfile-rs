@@ -5,7 +5,6 @@ use std::io::{Cursor, Read, Result, Seek, SeekFrom};
 use byteorder::{BigEndian, ByteOrder, ReadBytesExt};
 use varint::VarintRead;
 
-use crate::error::TsFileError;
 use crate::file::reader::{Length, TryClone};
 
 const DEFAULT_BUF_SIZE: usize = 8 * 1024;
@@ -13,7 +12,6 @@ const DEFAULT_BUF_SIZE: usize = 8 * 1024;
 pub trait TsFileReader: Read + Seek + Length + TryClone {}
 
 impl<T: Read + Seek + Length + TryClone> TsFileReader for T {}
-
 
 pub struct FileSource<R: TsFileReader> {
     reader: RefCell<R>,
@@ -122,14 +120,13 @@ impl<R: TsFileReader> Length for FileSource<R> {
 pub trait BigEndianReader: Read {
     fn read_big_endian_i32(&mut self) -> i32 {
         let mut buffer = vec![0; 4];
-        self.read(&mut buffer).unwrap();
+        self.read_exact(&mut buffer);
         BigEndian::read_i32(&buffer)
     }
 
-
     fn read_big_endian_i64(&mut self) -> i64 {
         let mut vec = vec![0; 8];
-        self.read(&mut vec).unwrap();
+        self.read_exact(&mut vec);
         BigEndian::read_i64(&vec)
     }
 
@@ -137,11 +134,10 @@ pub trait BigEndianReader: Read {
         let result = self.read_u8().unwrap();
         match result {
             0 => false,
-            _ => true
+            _ => true,
         }
     }
 }
-
 
 pub trait VarIntReader: VarintRead {
     fn read_varint_string(&mut self) -> Result<String> {
@@ -156,9 +152,7 @@ pub trait VarIntReader: VarintRead {
                 self.read_exact(&mut data)?;
                 Ok(String::from_utf8(data).unwrap())
             }
-            Err(e) => {
-                Err(e)
-            }
+            Err(e) => Err(e),
         }
     }
 }

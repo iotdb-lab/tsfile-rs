@@ -1,8 +1,8 @@
 use std::fs::File;
 use std::io::{Cursor, Read};
 
-use crate::error::{Result, TsFileError};
-use crate::file::metadata::{ChunkMetadata, MetadataIndexEntry, MetadataIndexNodeType, TimeseriesMetadata, TimeseriesMetadataType, TsFileMetadata};
+use crate::error::{Result};
+use crate::file::metadata::{ChunkMetadata, MetadataIndexNodeType, TimeseriesMetadata, TsFileMetadata};
 use crate::utils::io::FileSource;
 
 pub trait Length {
@@ -12,7 +12,6 @@ pub trait Length {
 pub trait TryClone: Sized {
     fn try_clone(&self) -> std::io::Result<Self>;
 }
-
 
 pub trait SectionReader: Length {
     type T: Read;
@@ -29,7 +28,10 @@ pub trait FileReader {
 
     fn get_device_reader();
 
-    fn sensor_meta_iter(&self, device: String) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>>;
+    fn sensor_meta_iter(
+        &self,
+        device: String,
+    ) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>>;
 
     fn get_sensor_reader(&self, device: String, sensor: String) -> Box<dyn SensorReader>;
 }
@@ -87,7 +89,7 @@ impl SectionReader for File {
                 reader.read_exact(&mut data);
                 Ok(Cursor::new(data))
             }
-            Err(e) => { Err(e) }
+            Err(e) => Err(e),
         }
     }
 }

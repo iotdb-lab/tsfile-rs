@@ -1,6 +1,6 @@
 use std::borrow::BorrowMut;
 use std::convert::TryFrom;
-use std::io::{Cursor, Read};
+use std::io::{Cursor};
 
 use byteorder::{BigEndian, ReadBytesExt};
 use varint::VarintRead;
@@ -73,7 +73,6 @@ pub struct FloatStatistics {
     sum_value: f64,
 }
 
-
 impl TryFrom<&mut Cursor<Vec<u8>>> for StatisticHeader {
     type Error = TsFileError;
 
@@ -116,7 +115,6 @@ impl TryFrom<&'_ mut Cursor<Vec<u8>>> for IntegerStatistics {
         })
     }
 }
-
 
 impl TryFrom<&'_ mut Cursor<Vec<u8>>> for FloatStatistics {
     type Error = TsFileError;
@@ -171,7 +169,6 @@ impl TryFrom<&'_ mut Cursor<Vec<u8>>> for BinaryStatistics {
     }
 }
 
-
 impl Statistic<'_> for IntegerStatistics {}
 
 impl Statistic<'_> for FloatStatistics {}
@@ -183,4 +180,3 @@ impl Statistic<'_> for LongStatistics {}
 impl Statistic<'_> for BinaryStatistics {}
 
 impl Statistic<'_> for StatisticHeader {}
-

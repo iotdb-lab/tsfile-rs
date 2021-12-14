@@ -5,16 +5,12 @@ const FOOTER_SIZE: usize = 10;
 
 #[macro_use]
 pub mod error;
-pub mod file;
 pub mod chunk;
+pub mod file;
 mod utils;
 
-
 mod tests {
-    use std::convert::TryFrom;
-
-    use crate::file::metadata::MetadataIndexNodeType::LeafDevice;
-    use crate::file::reader::{DeviceMetadataIter, FileReader};
+    use crate::file::reader::FileReader;
     use crate::file::tsfile_search_reader::TsFileSearchReader;
 
     #[test]

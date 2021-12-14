@@ -3,10 +3,9 @@ use std::result;
 
 pub type Result<T> = result::Result<T, TsFileError>;
 
-
 #[derive(Debug, PartialEq)]
 pub enum TsFileError {
-    General(String)
+    General(String),
 }
 
 #[macro_export]
@@ -17,7 +16,6 @@ macro_rules! general_err {
     ($e:ident, $fmt:expr, $($args:tt),*) => (
         TsFileError::General(&format!($fmt, $($args),*), $e));
 }
-
 
 impl std::fmt::Display for TsFileError {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {

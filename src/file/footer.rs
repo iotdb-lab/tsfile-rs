@@ -11,13 +11,10 @@ use crate::FOOTER_SIZE;
 pub fn parser_metadata<R: SectionReader>(reader: &R) -> Result<TsFileMetadata> {
     let file_size = reader.len();
     if file_size < (FOOTER_SIZE as u64) {
-        return Err(general_err!(
-            "Invalid TsFile. Size is smaller than footer"
-        ));
+        return Err(general_err!("Invalid TsFile. Size is smaller than footer"));
     }
 
-    let mut result = reader
-        .get_read(file_size - FOOTER_SIZE as u64, FOOTER_SIZE)?;
+    let mut result = reader.get_read(file_size - FOOTER_SIZE as u64, FOOTER_SIZE)?;
 
     let mut end_buf = vec![0; FOOTER_SIZE];
     result.read_exact(&mut end_buf)?;
@@ -36,8 +33,7 @@ pub fn parser_metadata<R: SectionReader>(reader: &R) -> Result<TsFileMetadata> {
 
     let footer_metadata_pos = file_size - FOOTER_SIZE as u64 - metadata_len as u64;
 
-    let metadata_reader = reader
-        .get_read(footer_metadata_pos, metadata_len as usize)?;
+    let metadata_reader = reader.get_read(footer_metadata_pos, metadata_len as usize)?;
     let mut metadata_reader = Box::new(metadata_reader);
 
     let mut data = vec![0; metadata_len as usize];

@@ -1,18 +1,20 @@
 use std::borrow::BorrowMut;
 use std::convert::TryFrom;
-use std::io::{Cursor, Read, Seek};
+use std::io::{Cursor, Read};
 use std::sync::Arc;
 
 use bit_set::BitSet;
-use byteorder::{ByteOrder, ReadBytesExt};
+use byteorder::{ReadBytesExt};
 use varint::VarintRead;
 
-use crate::error::{Result, TsFileError};
 use crate::error::TsFileError::General;
-use crate::file::metadata::MetadataIndexNodeType::{InternalDevice, InternalMeasurement, LeafDevice, LeafMeasurement};
-use crate::file::metadata::TimeseriesMetadataType::{MoreChunks, OneChunk};
+use crate::error::{Result, TsFileError};
+use crate::file::metadata::MetadataIndexNodeType::{
+    InternalDevice, InternalMeasurement, LeafDevice, LeafMeasurement,
+};
 use crate::file::metadata::TSDataType::Boolean;
-use crate::file::statistics::{*};
+use crate::file::metadata::TimeseriesMetadataType::{MoreChunks, OneChunk};
+use crate::file::statistics::*;
 use crate::utils::io::{BigEndianReader, VarIntReader};
 
 #[derive(Debug)]
@@ -47,9 +49,10 @@ impl FileMeta {
         &self.bloom_filter
     }
 
-    pub fn metadata_index(&self) -> &MetadataIndexNodeType { &self.metadata_index }
+    pub fn metadata_index(&self) -> &MetadataIndexNodeType {
+        &self.metadata_index
+    }
 }
-
 
 #[derive(Debug)]
 pub struct BloomFilter {
@@ -73,10 +76,9 @@ impl BloomFilter {
             ret = self.bits.contains(self.func[index].hash(path) as usize);
             index += 1;
         }
-        return ret;
+        ret
     }
 }
-
 
 #[derive(Debug)]
 pub struct HashFunction {
@@ -103,10 +105,10 @@ pub enum MetadataIndexNodeType {
 impl Clone for MetadataIndexNodeType {
     fn clone(&self) -> Self {
         match self {
-            InternalDevice(m) => { InternalDevice(m.clone()) }
-            LeafDevice(m) => { LeafDevice(m.clone()) }
-            InternalMeasurement(m) => { InternalMeasurement(m.clone()) }
-            LeafMeasurement(m) => { LeafMeasurement(m.clone()) }
+            InternalDevice(m) => InternalDevice(m.clone()),
+            LeafDevice(m) => LeafDevice(m.clone()),
+            InternalMeasurement(m) => InternalMeasurement(m.clone()),
+            LeafMeasurement(m) => LeafMeasurement(m.clone()),
         }
     }
 }
@@ -142,7 +144,6 @@ impl Clone for MetaDataIndexNode {
     }
 }
 
-
 #[derive(Debug)]
 pub struct MetadataIndexEntry {
     name: String,
@@ -153,14 +154,16 @@ impl MetadataIndexEntry {
     pub fn offset(&self) -> i64 {
         self.offset
     }
-    pub fn name(&self) -> &str { self.name.as_str() }
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
 }
 
 impl Clone for MetadataIndexEntry {
     fn clone(&self) -> Self {
         Self {
             name: self.name.clone(),
-            offset: self.offset.clone(),
+            offset: self.offset,
         }
     }
 
@@ -192,38 +195,35 @@ impl TimeseriesMetadataType {
         let chunk_metadata_list_size = cursor.read_unsigned_varint_32()?;
         let data_type = Arc::new(TSDataType::new(data_type, cursor)?);
         let metadata_type = match meta_type {
-            0 => {
-                TimeseriesMetadataType::OneChunk
-            }
-            _ => { TimeseriesMetadataType::MoreChunks }
+            0 => TimeseriesMetadataType::OneChunk,
+            _ => TimeseriesMetadataType::MoreChunks,
         };
 
         let end_pos = cursor.position() + chunk_metadata_list_size as u64;
         let mut chunk_metadata_list = Vec::new();
         while cursor.position() < end_pos {
-            chunk_metadata_list.push(
-                ChunkMetadata::new(measurement_id.clone(), cursor.borrow_mut(),
-                                   &metadata_type, data_type.clone())?);
+            chunk_metadata_list.push(ChunkMetadata::new(
+                measurement_id.clone(),
+                cursor.borrow_mut(),
+                &metadata_type,
+                data_type.clone(),
+            )?);
         }
         match metadata_type {
-            OneChunk => {
-                Ok(TimeseriesMetadata {
-                    measurement_id,
-                    data_type,
-                    metadata_type,
-                    chunk_metadata_list_size,
-                    chunk_metadata_list,
-                })
-            }
-            MoreChunks => {
-                Ok(TimeseriesMetadata {
-                    measurement_id,
-                    data_type,
-                    metadata_type,
-                    chunk_metadata_list_size,
-                    chunk_metadata_list,
-                })
-            }
+            OneChunk => Ok(TimeseriesMetadata {
+                measurement_id,
+                data_type,
+                metadata_type,
+                chunk_metadata_list_size,
+                chunk_metadata_list,
+            }),
+            MoreChunks => Ok(TimeseriesMetadata {
+                measurement_id,
+                data_type,
+                metadata_type,
+                chunk_metadata_list_size,
+                chunk_metadata_list,
+            }),
         }
     }
 }
@@ -241,24 +241,24 @@ pub enum TSDataType {
 impl TSDataType {
     fn new(flag: u8, cursor: &mut Cursor<Vec<u8>>) -> Result<TSDataType> {
         match flag {
-            0 => { Ok(Self::Boolean(BooleanStatistics::try_from(cursor).unwrap())) }
-            1 => { Ok(Self::Int32(IntegerStatistics::try_from(cursor).unwrap())) }
-            2 => { Ok(Self::Int64(LongStatistics::try_from(cursor).unwrap())) }
-            3 => { Ok(Self::FLOAT(FloatStatistics::try_from(cursor).unwrap())) }
-            4 => { Ok(Self::DOUBLE(DoubleStatistics::try_from(cursor).unwrap())) }
-            5 => { Ok(Self::TEXT(BinaryStatistics::try_from(cursor).unwrap())) }
-            _ => { Err(TsFileError::General("123".to_string())) }
+            0 => Ok(Self::Boolean(BooleanStatistics::try_from(cursor).unwrap())),
+            1 => Ok(Self::Int32(IntegerStatistics::try_from(cursor).unwrap())),
+            2 => Ok(Self::Int64(LongStatistics::try_from(cursor).unwrap())),
+            3 => Ok(Self::FLOAT(FloatStatistics::try_from(cursor).unwrap())),
+            4 => Ok(Self::DOUBLE(DoubleStatistics::try_from(cursor).unwrap())),
+            5 => Ok(Self::TEXT(BinaryStatistics::try_from(cursor).unwrap())),
+            _ => Err(TsFileError::General("123".to_string())),
         }
     }
 
     fn int_id(&self) -> u8 {
         match self {
-            Boolean(_) => { 0 }
-            TSDataType::Int32(_) => { 1 }
-            TSDataType::Int64(_) => { 2 }
-            TSDataType::FLOAT(_) => { 3 }
-            TSDataType::DOUBLE(_) => { 4 }
-            TSDataType::TEXT(_) => { 5 }
+            Boolean(_) => 0,
+            TSDataType::Int32(_) => 1,
+            TSDataType::Int64(_) => 2,
+            TSDataType::FLOAT(_) => 3,
+            TSDataType::DOUBLE(_) => 4,
+            TSDataType::TEXT(_) => 5,
         }
     }
 }
@@ -271,14 +271,17 @@ pub struct ChunkMetadata {
 }
 
 impl ChunkMetadata {
-    fn new(measurement_uid: String, cursor: &mut Cursor<Vec<u8>>, meta_type: &TimeseriesMetadataType, data_type: Arc<TSDataType>) -> Result<Self> {
+    fn new(
+        measurement_uid: String,
+        cursor: &mut Cursor<Vec<u8>>,
+        meta_type: &TimeseriesMetadataType,
+        data_type: Arc<TSDataType>,
+    ) -> Result<Self> {
         let offset_chunk_header = cursor.read_big_endian_i64();
 
         let ts_data_type = match meta_type {
-            OneChunk => { data_type }
-            MoreChunks => {
-                Arc::new(TSDataType::new(data_type.int_id(), cursor)?)
-            }
+            OneChunk => data_type,
+            MoreChunks => Arc::new(TSDataType::new(data_type.int_id(), cursor)?),
         };
 
         Ok(Self {
@@ -303,7 +306,7 @@ impl TsFileMetadata {
             match data.read_unsigned_varint_32() {
                 Ok(bloom_filter_size) => {
                     let mut bytes = vec![0; bloom_filter_size as usize];
-                    data.read(&mut bytes)?;
+                    data.read_exact(&mut bytes);
 
                     let filter_size = data.read_unsigned_varint_32().unwrap();
                     let hash_function_size = data.read_unsigned_varint_32().unwrap();
@@ -313,9 +316,7 @@ impl TsFileMetadata {
                         file_meta: FileMeta::new(metadata_index, meta_offset, bloom_filter),
                     })
                 }
-                Err(e) => {
-                    Err(TsFileError::General(e.to_string()))
-                }
+                Err(e) => Err(TsFileError::General(e.to_string())),
             }
         } else {
             Ok(Self {
@@ -335,7 +336,6 @@ impl BloomFilter {
         for i in 0..hash_function_size {
             func.push(HashFunction::new(filter_size, seeds[i as usize]));
         }
-
 
         Self {
             size: filter_size,
@@ -370,7 +370,7 @@ impl MetadataIndexNodeType {
                 let end_offset = data.read_big_endian_i64();
 
                 let mut vec = vec![255; 1];
-                data.read(&mut vec)?;
+                data.read_exact(&mut vec);
 
                 let node = MetaDataIndexNode {
                     children,
@@ -381,7 +381,7 @@ impl MetadataIndexNodeType {
                     1 => Ok(LeafDevice(node)),
                     2 => Ok(InternalMeasurement(node)),
                     3 => Ok(LeafMeasurement(node)),
-                    _ => Err(General(format!("123")))
+                    _ => Err(General(format!("123"))),
                 }
             }
             Err(e) => {
@@ -394,17 +394,11 @@ impl MetadataIndexNodeType {
 impl MetadataIndexEntry {
     fn new(data: &mut Cursor<Vec<u8>>) -> Result<Self> {
         match data.read_varint_string() {
-            Ok(str) => {
-                Ok(Self {
-                    name: str,
-                    offset: data.read_big_endian_i64(),
-                })
-            }
-            Err(e) => {
-                Err(TsFileError::General(e.to_string()))
-            }
+            Ok(str) => Ok(Self {
+                name: str,
+                offset: data.read_big_endian_i64(),
+            }),
+            Err(e) => Err(TsFileError::General(e.to_string())),
         }
     }
 }
-
-
