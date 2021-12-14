@@ -19,7 +19,7 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let path = "/Users/liudawei/allfiles/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
+        let path = "/Users/liudawei/allfiles/workspace/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
         if let Ok(reader) = TsFileSearchReader::try_from(path) {
             // let x = reader.metadata();
             // let file_meta = x.file_meta();

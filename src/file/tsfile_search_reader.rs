@@ -113,6 +113,10 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
         Box::new(DeviceMetadataReader::new(self.reader.clone(), stack))
     }
 
+    fn get_device_reader() {
+        todo!()
+    }
+
     fn sensor_meta_iter(&self, device: String) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>> {
         let mut stack = Vec::new();
         stack.push(self.metadata.file_meta().metadata_index().clone());
@@ -262,7 +266,6 @@ impl<R: SectionReader> Iterator for SensorMetadataReader<R> {
                             .reader
                             .get_cursor(start.offset() as u64, len) {
                             while cursor.position() < len as u64 {
-                                println!("222 ->{:?}", cursor.position());
                                 if let Ok(t) = TimeseriesMetadataType::new(&mut cursor) {
                                     self.ts_stack.push(t);
                                 }

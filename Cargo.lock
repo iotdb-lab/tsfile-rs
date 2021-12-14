@@ -36,8 +36,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2983372caf4480544083767bf2d27defafe32af49ab4df3a0b7fc90793a3664"
 
 [[package]]
-name = "tsfile-rs"
-version = "0.1.0"
+name = "tsfile"
+version = "0.0.1"
 dependencies = [
  "bit-set",
  "byteorder",
