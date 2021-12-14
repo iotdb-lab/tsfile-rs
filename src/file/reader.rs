@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::{Cursor, Read};
 
-use crate::error::{Result};
+use crate::error::Result;
 use crate::file::metadata::{ChunkMetadata, MetadataIndexNodeType, TimeseriesMetadata, TsFileMetadata};
 use crate::utils::io::FileSource;
 
@@ -33,7 +33,7 @@ pub trait FileReader {
         device: String,
     ) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>>;
 
-    fn get_sensor_reader(&self, device: String, sensor: String) -> Box<dyn SensorReader>;
+    fn get_sensor_reader(&self, device: String, sensor: String) -> Option<Box<dyn SensorReader>>;
 }
 
 pub trait DeviceMetadataIter: Iterator {}
@@ -47,13 +47,11 @@ pub trait DeviceReader {
 }
 
 pub trait SensorReader {
-    fn metadata(&self) -> Vec<ChunkMetadata>;
-
-    fn get_chunk_page_reader(&self, i: usize) -> Result<Box<dyn PageReader>>;
+    fn metadata(&self) -> &Vec<TimeseriesMetadata>;
 
     fn get_chunk_reader(&self, i: usize) -> Result<Box<dyn ChunkReader>>;
 
-    fn get_page_iter(&self, predicate: dyn Fn(u64) -> bool) -> Result<RowIter>;
+    fn get_page_iter(&self, predicate: Box<dyn Fn(u64) -> bool>) -> Result<RowIter>;
 }
 
 pub trait ChunkReader {}

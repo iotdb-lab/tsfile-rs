@@ -1,1 +1,1 @@
-mod reader;
+pub(crate) mod reader;

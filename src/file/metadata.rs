@@ -4,16 +4,16 @@ use std::io::{Cursor, Read};
 use std::sync::Arc;
 
 use bit_set::BitSet;
-use byteorder::{ReadBytesExt};
+use byteorder::ReadBytesExt;
 use varint::VarintRead;
 
-use crate::error::TsFileError::General;
 use crate::error::{Result, TsFileError};
+use crate::error::TsFileError::General;
 use crate::file::metadata::MetadataIndexNodeType::{
     InternalDevice, InternalMeasurement, LeafDevice, LeafMeasurement,
 };
-use crate::file::metadata::TSDataType::Boolean;
 use crate::file::metadata::TimeseriesMetadataType::{MoreChunks, OneChunk};
+use crate::file::metadata::TSDataType::Boolean;
 use crate::file::statistics::*;
 use crate::utils::io::{BigEndianReader, VarIntReader};
 
@@ -31,7 +31,7 @@ impl TsFileMetadata {
 
 #[derive(Debug)]
 pub struct FileMeta {
-    metadata_index: MetadataIndexNodeType,
+    metadata_index: Arc<MetadataIndexNodeType>,
     meta_offset: i64,
     bloom_filter: Option<BloomFilter>,
 }
@@ -39,7 +39,7 @@ pub struct FileMeta {
 impl FileMeta {
     pub fn new(index: MetadataIndexNodeType, offset: i64, filter: Option<BloomFilter>) -> Self {
         FileMeta {
-            metadata_index: index,
+            metadata_index: Arc::new(index),
             meta_offset: offset,
             bloom_filter: filter,
         }
