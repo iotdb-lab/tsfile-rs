@@ -17,7 +17,7 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let path = "/Users/liudawei/allfiles/workspace/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
+        let path = "/Users/liudawei/allfiles/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
         if let Ok(reader) = TsFileSearchReader::try_from(path) {
             // let x = reader.metadata();
             // let file_meta = x.file_meta();
@@ -26,7 +26,9 @@ mod tests {
             if let Some(option) =
             reader.get_sensor_reader("root.group_0.d_0".to_string(), "s_0".to_string())
             {
-                option.get_chunk_reader(0).iter().for_each(|x| x.header());
+                if let Ok(x) = option.get_chunk_reader(0) {
+                    x.for_each(|y| println!("{:?}", y.header()));
+                }
             }
             // let x = reader.sensor_meta_iter("root.group_0.d_0".to_string());
             // x.for_each(|x| println!("{:?}", x.get))

@@ -101,8 +101,6 @@ impl DefaultChunkReader {
                         ),
                         data: Cursor::new(Vec::from(data)),
                     }));
-                    //skip data read
-                    cursor.set_position(cursor.position() + compressed_size as u64);
                 }
                 _ => {
                     let uncompressed_size = cursor.read_unsigned_varint_32()?;
@@ -135,8 +133,6 @@ impl DefaultChunkReader {
                         header: PageHeader::new(uncompressed_size, compressed_size, page_statistic),
                         data: Cursor::new(Vec::from(data)),
                     }));
-                    //skip data read
-                    cursor.set_position(cursor.position() + compressed_size as u64);
                 }
             }
         }
@@ -169,12 +165,13 @@ impl PageReader for DefaultPageReader {
         &self.header
     }
 }
-
+#[derive(Debug)]
 pub struct DefaultPageReader {
     header: PageHeader,
     data: Cursor<Vec<u8>>,
 }
 
+#[derive(Debug)]
 pub struct PageHeader {
     uncompressed_size: u32,
     compressed_size: u32,
