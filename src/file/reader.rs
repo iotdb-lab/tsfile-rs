@@ -1,8 +1,11 @@
 use std::fs::File;
 use std::io::{Cursor, Read};
+use crate::chunk::reader::PageHeader;
 
 use crate::error::Result;
-use crate::file::metadata::{ChunkMetadata, MetadataIndexNodeType, TimeseriesMetadata, TsFileMetadata};
+use crate::file::metadata::{
+    ChunkMetadata, MetadataIndexNodeType, TimeseriesMetadata, TsFileMetadata,
+};
 use crate::utils::io::FileSource;
 
 pub trait Length {
@@ -47,16 +50,20 @@ pub trait DeviceReader {
 }
 
 pub trait SensorReader {
-    fn metadata(&self) -> &Vec<TimeseriesMetadata>;
+    fn metadata(&self) -> &Vec<ChunkMetadata>;
 
-    fn get_chunk_reader(&self, i: usize) -> Result<Box<dyn ChunkReader>>;
+    fn number_of_chunks(&self) -> usize;
+
+    fn get_chunk_reader(&self, i: usize) -> Result<Box<dyn ChunkReader<Item=Box<dyn PageReader>>>>;
 
     fn get_page_iter(&self, predicate: Box<dyn Fn(u64) -> bool>) -> Result<RowIter>;
 }
 
-pub trait ChunkReader {}
+pub trait ChunkReader: Iterator {}
 
-pub trait PageReader {}
+pub trait PageReader {
+   fn header(&self) -> &PageHeader;
+}
 
 pub struct RowIter {
     current_row_group: usize,

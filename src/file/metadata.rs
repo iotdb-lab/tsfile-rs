@@ -1,4 +1,4 @@
-use std::borrow::BorrowMut;
+use std::borrow::{Borrow, BorrowMut};
 use std::convert::TryFrom;
 use std::io::{Cursor, Read};
 use std::sync::Arc;
@@ -7,13 +7,13 @@ use bit_set::BitSet;
 use byteorder::ReadBytesExt;
 use varint::VarintRead;
 
-use crate::error::{Result, TsFileError};
 use crate::error::TsFileError::General;
+use crate::error::{Result, TsFileError};
 use crate::file::metadata::MetadataIndexNodeType::{
     InternalDevice, InternalMeasurement, LeafDevice, LeafMeasurement,
 };
-use crate::file::metadata::TimeseriesMetadataType::{MoreChunks, OneChunk};
 use crate::file::metadata::TSDataType::Boolean;
+use crate::file::metadata::TimeseriesMetadataType::{MoreChunks, OneChunk};
 use crate::file::statistics::*;
 use crate::utils::io::{BigEndianReader, VarIntReader};
 
@@ -183,82 +183,138 @@ pub struct TimeseriesMetadata {
     chunk_metadata_list: Vec<ChunkMetadata>,
     chunk_metadata_list_size: u32,
     measurement_id: String,
-    data_type: Arc<TSDataType>,
+    data_type: TSDataType,
     metadata_type: TimeseriesMetadataType,
+}
+
+impl TimeseriesMetadata {
+    pub fn chunk_metadata_list(self) -> Vec<ChunkMetadata> {
+        self.chunk_metadata_list
+    }
 }
 
 impl TimeseriesMetadataType {
     pub fn new(cursor: &mut Cursor<Vec<u8>>) -> Result<TimeseriesMetadata> {
-        let meta_type = cursor.read_u8()?;
-        let measurement_id = cursor.read_varint_string()?;
-        let data_type = cursor.read_u8()?;
-        let chunk_metadata_list_size = cursor.read_unsigned_varint_32()?;
-        let data_type = Arc::new(TSDataType::new(data_type, cursor)?);
-        let metadata_type = match meta_type {
+        let meta_type = match cursor.read_u8()? {
             0 => TimeseriesMetadataType::OneChunk,
             _ => TimeseriesMetadataType::MoreChunks,
         };
+        let measurement_id = cursor.read_varint_string()?;
+        let data_type = TSDataType::new(cursor.read_u8()?)?;
+        let chunk_metadata_list_size = cursor.read_unsigned_varint_32()?;
 
+        let statistics = Arc::new(match data_type {
+            Boolean => Statistic::Boolean(BooleanStatistics::try_from(cursor.borrow_mut())?),
+            TSDataType::Int32 => {
+                Statistic::Int32(IntegerStatistics::try_from(cursor.borrow_mut())?)
+            }
+            TSDataType::Int64 => Statistic::Int64(LongStatistics::try_from(cursor.borrow_mut())?),
+            TSDataType::FLOAT => Statistic::FLOAT(FloatStatistics::try_from(cursor.borrow_mut())?),
+            TSDataType::DOUBLE => {
+                Statistic::DOUBLE(DoubleStatistics::try_from(cursor.borrow_mut())?)
+            }
+            TSDataType::TEXT => Statistic::TEXT(BinaryStatistics::try_from(cursor.borrow_mut())?),
+        });
         let end_pos = cursor.position() + chunk_metadata_list_size as u64;
         let mut chunk_metadata_list = Vec::new();
         while cursor.position() < end_pos {
+            let offset_chunk_header = cursor.read_big_endian_i64();
+
+            let statistic = match meta_type {
+                OneChunk => statistics.clone(),
+                MoreChunks => Arc::new(match data_type {
+                    Boolean => {
+                        Statistic::Boolean(BooleanStatistics::try_from(cursor.borrow_mut())?)
+                    }
+                    TSDataType::Int32 => {
+                        Statistic::Int32(IntegerStatistics::try_from(cursor.borrow_mut())?)
+                    }
+                    TSDataType::Int64 => {
+                        Statistic::Int64(LongStatistics::try_from(cursor.borrow_mut())?)
+                    }
+                    TSDataType::FLOAT => {
+                        Statistic::FLOAT(FloatStatistics::try_from(cursor.borrow_mut())?)
+                    }
+                    TSDataType::DOUBLE => {
+                        Statistic::DOUBLE(DoubleStatistics::try_from(cursor.borrow_mut())?)
+                    }
+                    TSDataType::TEXT => {
+                        Statistic::TEXT(BinaryStatistics::try_from(cursor.borrow_mut())?)
+                    }
+                }),
+            };
             chunk_metadata_list.push(ChunkMetadata::new(
                 measurement_id.clone(),
-                cursor.borrow_mut(),
-                &metadata_type,
+                offset_chunk_header,
                 data_type.clone(),
-            )?);
+                statistic,
+            ));
         }
-        match metadata_type {
-            OneChunk => Ok(TimeseriesMetadata {
-                measurement_id,
-                data_type,
-                metadata_type,
-                chunk_metadata_list_size,
-                chunk_metadata_list,
-            }),
-            MoreChunks => Ok(TimeseriesMetadata {
-                measurement_id,
-                data_type,
-                metadata_type,
-                chunk_metadata_list_size,
-                chunk_metadata_list,
-            }),
-        }
+        Ok(TimeseriesMetadata {
+            measurement_id,
+            data_type,
+            metadata_type: meta_type,
+            chunk_metadata_list_size,
+            chunk_metadata_list,
+        })
     }
 }
 
 #[derive(Debug)]
 pub enum TSDataType {
-    Boolean(BooleanStatistics),
-    Int32(IntegerStatistics),
-    Int64(LongStatistics),
-    FLOAT(FloatStatistics),
-    DOUBLE(DoubleStatistics),
-    TEXT(BinaryStatistics),
+    Boolean,
+    Int32,
+    Int64,
+    FLOAT,
+    DOUBLE,
+    TEXT,
+}
+
+impl Clone for TSDataType {
+    fn clone(&self) -> Self {
+        match self {
+            Boolean => Self::Boolean,
+            TSDataType::Int32 => Self::Int32,
+            TSDataType::Int64 => Self::Int64,
+            TSDataType::FLOAT => Self::FLOAT,
+            TSDataType::DOUBLE => Self::DOUBLE,
+            TSDataType::TEXT => Self::TEXT,
+        }
+    }
 }
 
 impl TSDataType {
-    fn new(flag: u8, cursor: &mut Cursor<Vec<u8>>) -> Result<TSDataType> {
-        match flag {
-            0 => Ok(Self::Boolean(BooleanStatistics::try_from(cursor).unwrap())),
-            1 => Ok(Self::Int32(IntegerStatistics::try_from(cursor).unwrap())),
-            2 => Ok(Self::Int64(LongStatistics::try_from(cursor).unwrap())),
-            3 => Ok(Self::FLOAT(FloatStatistics::try_from(cursor).unwrap())),
-            4 => Ok(Self::DOUBLE(DoubleStatistics::try_from(cursor).unwrap())),
-            5 => Ok(Self::TEXT(BinaryStatistics::try_from(cursor).unwrap())),
+    pub fn new(id: u8) -> Result<TSDataType> {
+        match id {
+            0 => Ok(Self::Boolean),
+            1 => Ok(Self::Int32),
+            2 => Ok(Self::Int64),
+            3 => Ok(Self::FLOAT),
+            4 => Ok(Self::DOUBLE),
+            5 => Ok(Self::TEXT),
             _ => Err(TsFileError::General("123".to_string())),
         }
     }
+    // fn new(flag: u8, cursor: &mut Cursor<Vec<u8>>) -> Result<TSDataType> {
+    //     match flag {
+    //         0 => Ok(Self::Boolean(BooleanStatistics::try_from(cursor).unwrap())),
+    //         1 => Ok(Self::Int32(IntegerStatistics::try_from(cursor).unwrap())),
+    //         2 => Ok(Self::Int64(LongStatistics::try_from(cursor).unwrap())),
+    //         3 => Ok(Self::FLOAT(FloatStatistics::try_from(cursor).unwrap())),
+    //         4 => Ok(Self::DOUBLE(DoubleStatistics::try_from(cursor).unwrap())),
+    //         5 => Ok(Self::TEXT(BinaryStatistics::try_from(cursor).unwrap())),
+    //         _ => Err(TsFileError::General("123".to_string())),
+    //     }
+    // }
 
     fn int_id(&self) -> u8 {
         match self {
-            Boolean(_) => 0,
-            TSDataType::Int32(_) => 1,
-            TSDataType::Int64(_) => 2,
-            TSDataType::FLOAT(_) => 3,
-            TSDataType::DOUBLE(_) => 4,
-            TSDataType::TEXT(_) => 5,
+            Boolean => 0,
+            TSDataType::Int32 => 1,
+            TSDataType::Int64 => 2,
+            TSDataType::FLOAT => 3,
+            TSDataType::DOUBLE => 4,
+            TSDataType::TEXT => 5,
         }
     }
 }
@@ -266,29 +322,36 @@ impl TSDataType {
 #[derive(Debug)]
 pub struct ChunkMetadata {
     measurement_uid: String,
-    ts_data_type: Arc<TSDataType>,
+    ts_data_type: TSDataType,
     offset_chunk_header: i64,
+    statistic: Arc<Statistic>,
 }
 
 impl ChunkMetadata {
     fn new(
         measurement_uid: String,
-        cursor: &mut Cursor<Vec<u8>>,
-        meta_type: &TimeseriesMetadataType,
-        data_type: Arc<TSDataType>,
-    ) -> Result<Self> {
-        let offset_chunk_header = cursor.read_big_endian_i64();
-
-        let ts_data_type = match meta_type {
-            OneChunk => data_type,
-            MoreChunks => Arc::new(TSDataType::new(data_type.int_id(), cursor)?),
-        };
-
-        Ok(Self {
+        offset_chunk_header: i64,
+        ts_data_type: TSDataType,
+        statistic: Arc<Statistic>,
+    ) -> Self {
+        Self {
             measurement_uid,
             ts_data_type,
             offset_chunk_header,
-        })
+            statistic,
+        }
+    }
+
+    pub fn ts_data_type(&self) -> &TSDataType {
+        &self.ts_data_type
+    }
+
+    pub fn offset_chunk_header(&self) -> i64 {
+        self.offset_chunk_header
+    }
+
+    pub fn statistic(&self) -> Arc<Statistic> {
+        self.statistic.clone()
     }
 }
 

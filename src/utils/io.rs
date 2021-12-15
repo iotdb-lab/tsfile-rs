@@ -155,6 +155,22 @@ pub trait VarIntReader: VarintRead {
             Err(e) => Err(e),
         }
     }
+
+    fn read_varint_string_len(&mut self) -> Result<(u32, String)> {
+        match self.read_unsigned_varint_32() {
+            Ok(len) => {
+                let mut x: i32 = (len >> 1) as i32;
+                if (len & 1) != 0 {
+                    x = !x;
+                }
+
+                let mut data: Vec<u8> = vec![0; x as usize];
+                self.read_exact(&mut data)?;
+                Ok((len, String::from_utf8(data).unwrap()))
+            }
+            Err(e) => Err(e),
+        }
+    }
 }
 
 impl VarIntReader for Cursor<Vec<u8>> {}

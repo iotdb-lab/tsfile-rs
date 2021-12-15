@@ -1,6 +1,6 @@
 use std::borrow::BorrowMut;
 use std::convert::TryFrom;
-use std::io::{Cursor};
+use std::io::Cursor;
 
 use byteorder::{BigEndian, ReadBytesExt};
 use varint::VarintRead;
@@ -8,7 +8,15 @@ use varint::VarintRead;
 use crate::error::TsFileError;
 use crate::utils::io::BigEndianReader;
 
-pub trait Statistic<'a>: TryFrom<&'a mut Cursor<Vec<u8>>> {}
+#[derive(Debug)]
+pub enum Statistic {
+    Boolean(BooleanStatistics),
+    Int32(IntegerStatistics),
+    Int64(LongStatistics),
+    FLOAT(FloatStatistics),
+    DOUBLE(DoubleStatistics),
+    TEXT(BinaryStatistics),
+}
 
 #[derive(Debug)]
 pub struct StatisticHeader {
@@ -99,8 +107,6 @@ impl TryFrom<&mut Cursor<Vec<u8>>> for BooleanStatistics {
     }
 }
 
-impl Statistic<'_> for BooleanStatistics {}
-
 impl TryFrom<&'_ mut Cursor<Vec<u8>>> for IntegerStatistics {
     type Error = TsFileError;
 
@@ -162,21 +168,9 @@ impl TryFrom<&'_ mut Cursor<Vec<u8>>> for LongStatistics {
 }
 
 impl TryFrom<&'_ mut Cursor<Vec<u8>>> for BinaryStatistics {
-    type Error = ();
+    type Error = TsFileError;
 
     fn try_from(value: &'_ mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
         todo!()
     }
 }
-
-impl Statistic<'_> for IntegerStatistics {}
-
-impl Statistic<'_> for FloatStatistics {}
-
-impl Statistic<'_> for DoubleStatistics {}
-
-impl Statistic<'_> for LongStatistics {}
-
-impl Statistic<'_> for BinaryStatistics {}
-
-impl Statistic<'_> for StatisticHeader {}

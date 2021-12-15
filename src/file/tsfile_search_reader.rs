@@ -5,15 +5,18 @@ use std::io::{Cursor, Read};
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::chunk::reader::TsFileSensorReader;
 use crate::error::Result;
 use crate::error::TsFileError;
 use crate::file::footer;
-use crate::file::metadata::{MetadataIndexEntry, MetaDataIndexNode, MetadataIndexNodeType, TimeseriesMetadata, TimeseriesMetadataType, TsFileMetadata};
 use crate::file::metadata::MetadataIndexNodeType::*;
+use crate::file::metadata::{
+    MetaDataIndexNode, MetadataIndexEntry, MetadataIndexNodeType, TimeseriesMetadata,
+    TimeseriesMetadataType, TsFileMetadata,
+};
 use crate::file::reader::{
     DeviceMetadataIter, FileReader, SectionReader, SensorMetadataIter, SensorReader,
 };
-use crate::chunk::reader::TsFileSensorReader;
 
 impl TryFrom<File> for TsFileSearchReader<File> {
     type Error = TsFileError;
@@ -55,12 +58,24 @@ pub struct TsFileSearchReader<R: SectionReader> {
 }
 
 impl<R: 'static + SectionReader> TsFileSearchReader<R> {
-    fn binary_search_meta(&self, root: MetadataIndexNodeType, device: String, sensor: String) -> Option<Vec<TimeseriesMetadata>> {
-        let binary_search = |c: &MetaDataIndexNode, calc: Box<dyn Fn(&MetadataIndexEntry) -> Ordering>| -> Option<(i64, i64, usize)> {
-            let index = match c.children()
-                .binary_search_by(calc) {
-                Ok(r) => { r }
-                Err(r) => { if r == 0 { return None; } else { r - 1 } }
+    fn binary_search_meta(
+        &self,
+        root: MetadataIndexNodeType,
+        device: String,
+        sensor: String,
+    ) -> Option<Vec<TimeseriesMetadata>> {
+        let binary_search = |c: &MetaDataIndexNode,
+                             calc: Box<dyn Fn(&MetadataIndexEntry) -> Ordering>|
+         -> Option<(i64, i64, usize)> {
+            let index = match c.children().binary_search_by(calc) {
+                Ok(r) => r,
+                Err(r) => {
+                    if r == 0 {
+                        return None;
+                    } else {
+                        r - 1
+                    }
+                }
             };
             let start = c.children().get(index)?.offset();
             let len = if index == c.children().len() - 1 {
@@ -71,7 +86,6 @@ impl<R: 'static + SectionReader> TsFileSearchReader<R> {
             Some((start, len, index))
         };
 
-
         let mut stack = Vec::new();
         stack.push(root);
         while !stack.is_empty() {
@@ -81,7 +95,7 @@ impl<R: 'static + SectionReader> TsFileSearchReader<R> {
                 }
                 LeafMeasurement(c) => {
                     return match binary_search(&c, Box::new(|x| x.name().cmp(&sensor))) {
-                        None => { None }
+                        None => None,
                         Some((_, len, index)) => {
                             let mut result = Vec::new();
                             for i in 0..c.children().len() {
@@ -95,12 +109,13 @@ impl<R: 'static + SectionReader> TsFileSearchReader<R> {
                                 match self.reader.get_cursor(start.offset() as u64, len) {
                                     Ok(mut cursor) => {
                                         while cursor.position() < len as u64 {
-                                            if let Ok(t) = TimeseriesMetadataType::new(&mut cursor) {
+                                            if let Ok(t) = TimeseriesMetadataType::new(&mut cursor)
+                                            {
                                                 result.push(t);
                                             }
                                         }
                                     }
-                                    Err(e) => { return None }
+                                    Err(e) => return None,
                                 }
                             }
                             Some(result)
@@ -109,10 +124,11 @@ impl<R: 'static + SectionReader> TsFileSearchReader<R> {
                 }
             };
             match index {
-                None => { return None; }
+                None => {
+                    return None;
+                }
                 Some((s, len, _)) => {
-                    if let Ok(mut reader) = self.reader.get_read(s as u64, len as usize)
-                    {
+                    if let Ok(mut reader) = self.reader.get_read(s as u64, len as usize) {
                         let mut data = vec![0; len as usize];
                         reader.read_exact(&mut data);
                         if let Ok(result) = MetadataIndexNodeType::new(&mut Cursor::new(data)) {
@@ -131,7 +147,7 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
         &self.metadata
     }
 
-    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item=MetadataIndexNodeType>> {
+    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item = MetadataIndexNodeType>> {
         let mut stack = Vec::new();
         stack.push(self.metadata.file_meta().metadata_index().clone());
         Box::new(DeviceMetadataReader::new(self.reader.clone(), stack))
@@ -144,7 +160,7 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
     fn sensor_meta_iter(
         &self,
         device: String,
-    ) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>> {
+    ) -> Box<dyn SensorMetadataIter<Item = TimeseriesMetadata>> {
         let mut stack = Vec::new();
         stack.push(self.metadata.file_meta().metadata_index().clone());
         Box::new(SensorMetadataReader::new(
@@ -155,11 +171,16 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
     }
 
     fn get_sensor_reader(&self, device: String, sensor: String) -> Option<Box<dyn SensorReader>> {
-        match self.binary_search_meta(self.metadata.file_meta().metadata_index().clone(), device, sensor) {
-            None => { None }
-            Some(timeSeries) => {
-                Some(Box::new(TsFileSensorReader::new(self.reader.clone(), timeSeries)))
-            }
+        match self.binary_search_meta(
+            self.metadata.file_meta().metadata_index().clone(),
+            device,
+            sensor,
+        ) {
+            None => None,
+            Some(timeSeries) => Some(Box::new(TsFileSensorReader::new(
+                self.reader.clone(),
+                timeSeries,
+            ))),
         }
     }
 }
