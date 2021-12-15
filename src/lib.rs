@@ -7,7 +7,7 @@ const FOOTER_SIZE: usize = 10;
 pub mod error;
 pub mod chunk;
 pub mod file;
-mod utils;
+pub mod utils;
 
 mod tests {
     use std::fs::read;
@@ -27,7 +27,7 @@ mod tests {
             reader.get_sensor_reader("root.group_0.d_0".to_string(), "s_0".to_string())
             {
                 if let Ok(x) = option.get_chunk_reader(0) {
-                    x.for_each(|y| println!("{:?}", y.header()));
+                    x.for_each(|mut y| println!("{:?}", &mut y.data()));
                 }
             }
             // let x = reader.sensor_meta_iter("root.group_0.d_0".to_string());

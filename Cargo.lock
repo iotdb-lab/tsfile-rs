@@ -36,12 +36,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2983372caf4480544083767bf2d27defafe32af49ab4df3a0b7fc90793a3664"
 
 [[package]]
+name = "snap"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45456094d1983e2ee2a18fdfebce3189fa451699d0502cb8e3b49dba5ba41451"
+
+[[package]]
 name = "tsfile"
 version = "0.0.1"
 dependencies = [
  "bit-set",
  "byteorder",
  "murmurhash3",
+ "snap",
  "varint",
 ]
 

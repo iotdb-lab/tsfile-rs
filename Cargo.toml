@@ -17,4 +17,5 @@ keywords = ["tsfile", "iotdb", "lib", "db"]
 byteorder = "1"
 bit-set = "0.5.2"
 varint = "0.9.0"
+snap = "1.0.5"
 murmurhash3 = "0.0.5"

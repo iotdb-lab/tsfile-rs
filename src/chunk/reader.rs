@@ -1,17 +1,19 @@
-use byteorder::ReadBytesExt;
 use std::borrow::BorrowMut;
 use std::io::{Cursor, Read};
 use std::sync::Arc;
+
+use byteorder::{BigEndian, ReadBytesExt};
 use varint::VarintRead;
 
 use crate::error::{Result, TsFileError};
-use crate::file::metadata::{ChunkMetadata, TSDataType, TimeseriesMetadata};
+use crate::file::compress::Snappy;
+use crate::file::metadata::{ChunkMetadata, TimeseriesMetadata, TSDataType};
 use crate::file::reader::{ChunkReader, PageReader, RowIter, SectionReader, SensorReader};
 use crate::file::statistics::{
     BinaryStatistics, BooleanStatistics, DoubleStatistics, FloatStatistics, IntegerStatistics,
     LongStatistics, Statistic,
 };
-use crate::utils::io::VarIntReader;
+use crate::utils::io::*;
 
 #[derive(Debug)]
 pub struct TsFileSensorReader<R: SectionReader> {
@@ -42,7 +44,10 @@ impl<R: 'static + SectionReader> SensorReader for TsFileSensorReader<R> {
         self.meta.len()
     }
 
-    fn get_chunk_reader(&self, i: usize) -> Result<Box<dyn ChunkReader<Item=Box<dyn PageReader>>>> {
+    fn get_chunk_reader(
+        &self,
+        i: usize,
+    ) -> Result<Box<dyn ChunkReader<Item=Box<dyn PageReader>>>> {
         match &self.meta.get(i) {
             None => Err(TsFileError::General("123".to_string())),
             Some(chunk) => {
@@ -164,7 +169,16 @@ impl PageReader for DefaultPageReader {
     fn header(&self) -> &PageHeader {
         &self.header
     }
+
+    fn data(&mut self) {
+
+        println!("comp size:{:?},un_comp size:{:?}", self.header.compressed_size, self.header.uncompressed_size);
+        let mut data = Cursor::new(self.data.un_compress());
+        let time_len = data.read_unsigned_varint_32().expect("123");
+        println!("time_len:{:?},time:{:?}", time_len, data.read_big_endian_i64());
+    }
 }
+
 #[derive(Debug)]
 pub struct DefaultPageReader {
     header: PageHeader,
