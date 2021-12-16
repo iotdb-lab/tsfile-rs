@@ -8,6 +8,7 @@ pub mod error;
 pub mod chunk;
 pub mod file;
 pub mod utils;
+pub mod encoding;
 
 mod tests {
     use std::fs::read;
@@ -17,7 +18,7 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let path = "/Users/liudawei/allfiles/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
+        let path = "/Users/liudawei/allfiles/workspace/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
         if let Ok(reader) = TsFileSearchReader::try_from(path) {
             // let x = reader.metadata();
             // let file_meta = x.file_meta();
@@ -27,7 +28,7 @@ mod tests {
             reader.get_sensor_reader("root.group_0.d_0".to_string(), "s_0".to_string())
             {
                 if let Ok(x) = option.get_chunk_reader(0) {
-                    x.for_each(|mut y| println!("{:?}", &mut y.data()));
+                    x.for_each(|mut y| println!("{:?}",y.data()));
                 }
             }
             // let x = reader.sensor_meta_iter("root.group_0.d_0".to_string());

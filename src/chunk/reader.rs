@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use byteorder::{BigEndian, ReadBytesExt};
 use varint::VarintRead;
+use crate::encoding::decoder::{BinaryDecoder, LongBinaryDecoder};
 
 use crate::error::{Result, TsFileError};
 use crate::file::compress::Snappy;
@@ -104,6 +105,7 @@ impl DefaultChunkReader {
                             compressed_size,
                             statistic.clone(),
                         ),
+                        time_decoder: LongBinaryDecoder::new(),
                         data: Cursor::new(Vec::from(data)),
                     }));
                 }
@@ -136,6 +138,7 @@ impl DefaultChunkReader {
 
                     pages.push(Box::new(DefaultPageReader {
                         header: PageHeader::new(uncompressed_size, compressed_size, page_statistic),
+                        time_decoder: LongBinaryDecoder::new(),
                         data: Cursor::new(Vec::from(data)),
                     }));
                 }
@@ -170,18 +173,23 @@ impl PageReader for DefaultPageReader {
         &self.header
     }
 
-    fn data(&mut self) {
-
+    fn data(&self) {
         println!("comp size:{:?},un_comp size:{:?}", self.header.compressed_size, self.header.uncompressed_size);
         let mut data = Cursor::new(self.data.un_compress());
         let time_len = data.read_unsigned_varint_32().expect("123");
-        println!("time_len:{:?},time:{:?}", time_len, data.read_big_endian_i64());
+
+        let mut time_data: Vec<u8> = vec![0; time_len as usize];
+        data.read_exact(&mut time_data);
+        let result = LongBinaryDecoder::new().decode(&mut Cursor::new(time_data)).expect("123");
+
+        println!("time_len:{:?}, result:{:?}", time_len, result);
     }
 }
 
 #[derive(Debug)]
 pub struct DefaultPageReader {
     header: PageHeader,
+    time_decoder: LongBinaryDecoder,
     data: Cursor<Vec<u8>>,
 }
 

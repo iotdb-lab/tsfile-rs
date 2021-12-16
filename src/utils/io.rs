@@ -173,6 +173,36 @@ pub trait VarIntReader: VarintRead {
     }
 }
 
+pub trait PackWidthReader: Read {
+    fn read_pack_width_long(&mut self, pos: i32, width: i32) -> i64 {
+        let mut data: Vec<u8> = vec![0; width as usize];
+        self.read_exact(&mut data);
+
+        let mut temp = 0;
+        let mut value: i64 = 0;
+        for i in 0..width {
+            temp = (pos + width - 1 - i) / 8;
+            let mut offset = pos + width - 1 - i;
+            offset = offset % 8;
+            let byte = if ((0xff & data[temp as usize]) & (1 << (7 - offset))) != 0 {
+                1
+            } else {
+                0
+            };
+            let offset = i % 64;
+            value = if byte == 1 {
+                value | (1 << (offset))
+            } else {
+                value & (1 << (offset))
+            }
+        }
+        value
+    }
+}
+
+
 impl VarIntReader for Cursor<Vec<u8>> {}
 
 impl BigEndianReader for Cursor<Vec<u8>> {}
+
+impl PackWidthReader for Cursor<Vec<u8>> {}

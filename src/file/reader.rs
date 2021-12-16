@@ -66,7 +66,7 @@ pub trait ChunkReader: Iterator {}
 
 pub trait PageReader {
     fn header(&self) -> &PageHeader;
-    fn data(&mut self);
+    fn data(&self);
 }
 
 pub struct RowIter {
