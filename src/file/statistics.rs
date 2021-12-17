@@ -170,7 +170,7 @@ impl TryFrom<&'_ mut Cursor<Vec<u8>>> for LongStatistics {
 impl TryFrom<&'_ mut Cursor<Vec<u8>>> for BinaryStatistics {
     type Error = TsFileError;
 
-    fn try_from(value: &'_ mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+    fn try_from(_value: &'_ mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
         todo!()
     }
 }

@@ -1,7 +1,6 @@
-use std::io::Cursor;
-use varint::VarintRead;
 use crate::error::Result;
 use crate::utils::io::{BigEndianReader, PackWidthReader};
+use std::io::Cursor;
 
 #[derive(Debug)]
 pub enum Field {
@@ -13,31 +12,52 @@ pub enum Field {
     TEXT(Vec<u8>),
 }
 
-pub trait BinaryDecoder {
-    fn new() -> Self;
+pub trait Decoder {
+    fn new() -> Self
+    where
+        Self: Sized;
     fn decode(&self, data: &mut Cursor<Vec<u8>>) -> Result<Vec<Field>>;
 }
 
-#[derive(Debug)]
+pub trait BinaryDelta: Decoder {}
+
 pub struct LongBinaryDecoder {}
 
-
-impl BinaryDecoder for LongBinaryDecoder {
+impl Decoder for LongBinaryDecoder {
     fn new() -> Self {
         Self {}
     }
 
     fn decode(&self, data: &mut Cursor<Vec<u8>>) -> Result<Vec<Field>> {
-        let packNum = data.read_big_endian_i32();
-        let packWidth = data.read_big_endian_i32();
-        let minDeltaBase = data.read_big_endian_i64();
+        let pack_num = data.read_big_endian_i32();
+        let pack_width = data.read_big_endian_i32();
+        let min_delta_base = data.read_big_endian_i64();
         let previous = data.read_big_endian_i64();
-        let mut result = Vec::with_capacity(packNum as usize);
+        let mut result = Vec::with_capacity(pack_num as usize);
 
-        for i in 0..packNum {
-            let value = data.read_pack_width_long(packWidth * i, packWidth);
-            result.push(Field::Int64(previous + minDeltaBase + value));
-        };
+        for i in 0..pack_num {
+            let value = data.read_pack_width_long(pack_width * i, pack_width);
+            result.push(Field::Int64(previous + min_delta_base + value));
+        }
+
+        Ok(result)
+    }
+}
+
+pub trait PlainDecoder: Decoder {}
+
+pub struct IntPlainDecoder {}
+
+impl Decoder for IntPlainDecoder {
+    fn new() -> Self {
+        Self {}
+    }
+
+    fn decode(&self, data: &mut Cursor<Vec<u8>>) -> Result<Vec<Field>> {
+        let mut result = Vec::new();
+        while data.position() < data.get_ref().len() as u64 {
+            result.push(Field::Int32(data.read_big_endian_i32()));
+        }
 
         Ok(result)
     }

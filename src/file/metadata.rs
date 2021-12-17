@@ -1,4 +1,4 @@
-use std::borrow::{Borrow, BorrowMut};
+use std::borrow::{BorrowMut};
 use std::convert::TryFrom;
 use std::io::{Cursor, Read};
 use std::sync::Arc;
@@ -88,7 +88,7 @@ pub struct HashFunction {
 
 impl HashFunction {
     pub fn hash(&self, path: &str) -> i32 {
-        let hash_data = murmurhash3::murmurhash3_x64_128(&mut path.as_bytes(), self.seed as u64);
+        let hash_data = murmurhash3::murmurhash3_x64_128(path.as_bytes(), self.seed as u64);
         let data = hash_data.0 as i32 + hash_data.1 as i32;
         data % self.cap as i32
     }
@@ -139,7 +139,7 @@ impl Clone for MetaDataIndexNode {
         }
     }
 
-    fn clone_from(&mut self, source: &Self) {
+    fn clone_from(&mut self, _source: &Self) {
         todo!()
     }
 }
@@ -165,10 +165,6 @@ impl Clone for MetadataIndexEntry {
             name: self.name.clone(),
             offset: self.offset,
         }
-    }
-
-    fn clone_from(&mut self, source: &Self) {
-        todo!()
     }
 }
 
@@ -444,11 +440,11 @@ impl MetadataIndexNodeType {
                     1 => Ok(LeafDevice(node)),
                     2 => Ok(InternalMeasurement(node)),
                     3 => Ok(LeafMeasurement(node)),
-                    _ => Err(General(format!("123"))),
+                    _ => Err(General("123".to_string())),
                 }
             }
             Err(e) => {
-                return Err(TsFileError::General(e.to_string()));
+                Err(TsFileError::General(e.to_string()))
             }
         }
     }

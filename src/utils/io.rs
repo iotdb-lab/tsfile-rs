@@ -132,10 +132,7 @@ pub trait BigEndianReader: Read {
 
     fn read_bool(&mut self) -> bool {
         let result = self.read_u8().unwrap();
-        match result {
-            0 => false,
-            _ => true,
-        }
+        matches!(result,0)
     }
 }
 
@@ -178,12 +175,12 @@ pub trait PackWidthReader: Read {
         let mut data: Vec<u8> = vec![0; width as usize];
         self.read_exact(&mut data);
 
-        let mut temp = 0;
+        let mut temp: i32;
         let mut value: i64 = 0;
         for i in 0..width {
             temp = (pos + width - 1 - i) / 8;
             let mut offset = pos + width - 1 - i;
-            offset = offset % 8;
+            offset %= 8;
             let byte = if ((0xff & data[temp as usize]) & (1 << (7 - offset))) != 0 {
                 1
             } else {
@@ -199,7 +196,6 @@ pub trait PackWidthReader: Read {
         value
     }
 }
-
 
 impl VarIntReader for Cursor<Vec<u8>> {}
 

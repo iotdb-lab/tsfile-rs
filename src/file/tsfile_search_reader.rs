@@ -66,7 +66,7 @@ impl<R: 'static + SectionReader> TsFileSearchReader<R> {
     ) -> Option<Vec<TimeseriesMetadata>> {
         let binary_search = |c: &MetaDataIndexNode,
                              calc: Box<dyn Fn(&MetadataIndexEntry) -> Ordering>|
-         -> Option<(i64, i64, usize)> {
+                             -> Option<(i64, i64, usize)> {
             let index = match c.children().binary_search_by(calc) {
                 Ok(r) => r,
                 Err(r) => {
@@ -96,7 +96,7 @@ impl<R: 'static + SectionReader> TsFileSearchReader<R> {
                 LeafMeasurement(c) => {
                     return match binary_search(&c, Box::new(|x| x.name().cmp(&sensor))) {
                         None => None,
-                        Some((_, len, index)) => {
+                        Some(_) => {
                             let mut result = Vec::new();
                             for i in 0..c.children().len() {
                                 let start = c.children().get(i).unwrap();
@@ -115,7 +115,7 @@ impl<R: 'static + SectionReader> TsFileSearchReader<R> {
                                             }
                                         }
                                     }
-                                    Err(e) => return None,
+                                    Err(_) => return None,
                                 }
                             }
                             Some(result)
@@ -147,7 +147,7 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
         &self.metadata
     }
 
-    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item = MetadataIndexNodeType>> {
+    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item=MetadataIndexNodeType>> {
         let mut stack = Vec::new();
         stack.push(self.metadata.file_meta().metadata_index().clone());
         Box::new(DeviceMetadataReader::new(self.reader.clone(), stack))
@@ -160,7 +160,7 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
     fn sensor_meta_iter(
         &self,
         device: String,
-    ) -> Box<dyn SensorMetadataIter<Item = TimeseriesMetadata>> {
+    ) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>> {
         let mut stack = Vec::new();
         stack.push(self.metadata.file_meta().metadata_index().clone());
         Box::new(SensorMetadataReader::new(
@@ -177,9 +177,9 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
             sensor,
         ) {
             None => None,
-            Some(timeSeries) => Some(Box::new(TsFileSensorReader::new(
+            Some(time_series) => Some(Box::new(TsFileSensorReader::new(
                 self.reader.clone(),
-                timeSeries,
+                time_series,
             ))),
         }
     }

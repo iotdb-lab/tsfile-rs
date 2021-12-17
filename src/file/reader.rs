@@ -24,17 +24,12 @@ pub trait SectionReader: Length {
 
 pub trait FileReader {
     fn metadata(&self) -> &TsFileMetadata;
-
-    // fn binary_search_meta(&self, root: MetadataIndexNodeType, device: String, sensor: String) -> Option<(MetadataIndexEntry, i64)>;
-
-    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item=MetadataIndexNodeType>>;
-
+    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item = MetadataIndexNodeType>>;
     fn get_device_reader();
-
     fn sensor_meta_iter(
         &self,
         device: String,
-    ) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>>;
+    ) -> Box<dyn SensorMetadataIter<Item = TimeseriesMetadata>>;
 
     fn get_sensor_reader(&self, device: String, sensor: String) -> Option<Box<dyn SensorReader>>;
 }
@@ -57,7 +52,7 @@ pub trait SensorReader {
     fn get_chunk_reader(
         &self,
         i: usize,
-    ) -> Result<Box<dyn ChunkReader<Item=Box<dyn PageReader>>>>;
+    ) -> Result<Box<dyn ChunkReader<Item = Box<dyn PageReader>>>>;
 
     fn get_page_iter(&self, predicate: Box<dyn Fn(u64) -> bool>) -> Result<RowIter>;
 }

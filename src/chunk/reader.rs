@@ -2,13 +2,13 @@ use std::borrow::BorrowMut;
 use std::io::{Cursor, Read};
 use std::sync::Arc;
 
-use byteorder::{BigEndian, ReadBytesExt};
+use crate::encoding::decoder::{Decoder, IntPlainDecoder, LongBinaryDecoder};
+use byteorder::{ReadBytesExt};
 use varint::VarintRead;
-use crate::encoding::decoder::{BinaryDecoder, LongBinaryDecoder};
 
 use crate::error::{Result, TsFileError};
 use crate::file::compress::Snappy;
-use crate::file::metadata::{ChunkMetadata, TimeseriesMetadata, TSDataType};
+use crate::file::metadata::{ChunkMetadata, TSDataType, TimeseriesMetadata};
 use crate::file::reader::{ChunkReader, PageReader, RowIter, SectionReader, SensorReader};
 use crate::file::statistics::{
     BinaryStatistics, BooleanStatistics, DoubleStatistics, FloatStatistics, IntegerStatistics,
@@ -70,7 +70,7 @@ impl<R: 'static + SectionReader> SensorReader for TsFileSensorReader<R> {
         }
     }
 
-    fn get_page_iter(&self, predicate: Box<dyn Fn(u64) -> bool>) -> crate::error::Result<RowIter> {
+    fn get_page_iter(&self, _predicate: Box<dyn Fn(u64) -> bool>) -> crate::error::Result<RowIter> {
         todo!()
     }
 }
@@ -105,8 +105,11 @@ impl DefaultChunkReader {
                             compressed_size,
                             statistic.clone(),
                         ),
-                        time_decoder: LongBinaryDecoder::new(),
-                        data: Cursor::new(Vec::from(data)),
+                        value_decoder: match header.data_type {
+                            TSDataType::Int32 => Box::new(IntPlainDecoder::new()),
+                            _ => Box::new(IntPlainDecoder::new()),
+                        },
+                        data: Cursor::new(data),
                     }));
                 }
                 _ => {
@@ -138,8 +141,11 @@ impl DefaultChunkReader {
 
                     pages.push(Box::new(DefaultPageReader {
                         header: PageHeader::new(uncompressed_size, compressed_size, page_statistic),
-                        time_decoder: LongBinaryDecoder::new(),
-                        data: Cursor::new(Vec::from(data)),
+                        value_decoder: match header.data_type {
+                            TSDataType::Int32 => Box::new(IntPlainDecoder::new()),
+                            _ => Box::new(IntPlainDecoder::new()),
+                        },
+                        data: Cursor::new(data),
                     }));
                 }
             }
@@ -158,8 +164,8 @@ impl Iterator for DefaultChunkReader {
     type Item = Box<dyn PageReader>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.pages.len() == 0 {
-            ()
+        if self.pages.is_empty() {
+            return None;
         }
 
         self.pages.pop()
@@ -174,22 +180,23 @@ impl PageReader for DefaultPageReader {
     }
 
     fn data(&self) {
-        println!("comp size:{:?},un_comp size:{:?}", self.header.compressed_size, self.header.uncompressed_size);
         let mut data = Cursor::new(self.data.un_compress());
         let time_len = data.read_unsigned_varint_32().expect("123");
 
         let mut time_data: Vec<u8> = vec![0; time_len as usize];
         data.read_exact(&mut time_data);
-        let result = LongBinaryDecoder::new().decode(&mut Cursor::new(time_data)).expect("123");
-
-        println!("time_len:{:?}, result:{:?}", time_len, result);
+        let time = LongBinaryDecoder::new()
+            .decode(&mut Cursor::new(time_data))
+            .expect("123");
+        let data = self.value_decoder.decode(&mut data).expect("123");
+        println!("time:{:?}", time);
+        println!("data:{:?}", data);
     }
 }
 
-#[derive(Debug)]
 pub struct DefaultPageReader {
     header: PageHeader,
-    time_decoder: LongBinaryDecoder,
+    value_decoder: Box<dyn Decoder>,
     data: Cursor<Vec<u8>>,
 }
 
@@ -243,55 +250,55 @@ impl TryFrom<&mut Cursor<Vec<u8>>> for ChunkHeader {
 }
 
 pub enum CompressionType {
-    UNCOMPRESSED,
-    SNAPPY,
-    GZIP,
-    LZO,
-    SDT,
-    PAA,
-    PLA,
+    Uncompressed,
+    Snappy,
+    Gzip,
+    Lzo,
+    Sdt,
+    Paa,
+    Pla,
     LZ4,
 }
 
 impl CompressionType {
     pub fn new(id: u8) -> Self {
         match id {
-            0 => Self::UNCOMPRESSED,
-            1 => Self::SNAPPY,
-            2 => Self::GZIP,
-            3 => Self::LZO,
-            4 => Self::SDT,
-            5 => Self::PAA,
-            6 => Self::PLA,
+            0 => Self::Uncompressed,
+            1 => Self::Snappy,
+            2 => Self::Gzip,
+            3 => Self::Lzo,
+            4 => Self::Sdt,
+            5 => Self::Paa,
+            6 => Self::Pla,
             _ => Self::LZ4,
         }
     }
 }
 
 pub enum TSEncoding {
-    PLAIN,
-    PLAIN_DICTIONARY,
-    RLE,
-    DIFF,
-    TS_2DIFF,
-    BITMAP,
-    GORILLA_V1,
-    REGULAR,
-    GORILLA,
+    Plain,
+    PlainDictionary,
+    Rle,
+    Diff,
+    Ts2diff,
+    Bitmap,
+    GorillaV1,
+    Regular,
+    Gorilla,
 }
 
 impl TSEncoding {
     pub fn new(id: u8) -> Self {
         match id {
-            0 => Self::PLAIN,
-            1 => Self::PLAIN_DICTIONARY,
-            2 => Self::RLE,
-            3 => Self::DIFF,
-            4 => Self::TS_2DIFF,
-            5 => Self::BITMAP,
-            6 => Self::GORILLA_V1,
-            7 => Self::REGULAR,
-            _ => Self::GORILLA,
+            0 => Self::Plain,
+            1 => Self::PlainDictionary,
+            2 => Self::Rle,
+            3 => Self::Diff,
+            4 => Self::Ts2diff,
+            5 => Self::Bitmap,
+            6 => Self::GorillaV1,
+            7 => Self::Regular,
+            _ => Self::Gorilla,
         }
     }
 }
