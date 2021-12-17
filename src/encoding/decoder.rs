@@ -1,6 +1,7 @@
+use std::io::Cursor;
+
 use crate::error::Result;
 use crate::utils::io::{BigEndianReader, PackWidthReader};
-use std::io::Cursor;
 
 #[derive(Debug)]
 pub enum Field {
@@ -14,8 +15,8 @@ pub enum Field {
 
 pub trait Decoder {
     fn new() -> Self
-    where
-        Self: Sized;
+        where
+            Self: Sized;
     fn decode(&self, data: &mut Cursor<Vec<u8>>) -> Result<Vec<Field>>;
 }
 
@@ -32,12 +33,13 @@ impl Decoder for LongBinaryDecoder {
         let pack_num = data.read_big_endian_i32();
         let pack_width = data.read_big_endian_i32();
         let min_delta_base = data.read_big_endian_i64();
-        let previous = data.read_big_endian_i64();
+        let mut previous = data.read_big_endian_i64();
         let mut result = Vec::with_capacity(pack_num as usize);
 
         for i in 0..pack_num {
             let value = data.read_pack_width_long(pack_width * i, pack_width);
-            result.push(Field::Int64(previous + min_delta_base + value));
+            previous = previous + min_delta_base + value;
+            result.push(Field::Int64(previous));
         }
 
         Ok(result)
