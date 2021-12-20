@@ -3,10 +3,12 @@ use std::io::{Cursor, Read};
 use std::sync::Arc;
 
 use crate::encoding::decoder::{Decoder, Field, IntPlainDecoder, LongBinaryDecoder};
-use byteorder::{ReadBytesExt};
+use byteorder::ReadBytesExt;
+use snafu::{ensure, OptionExt, ResultExt};
 use varint::VarintRead;
 
-use crate::error::{Result, TsFileError};
+use crate::chunk::reader::Error::GetCursor;
+use crate::file::compress;
 use crate::file::compress::Snappy;
 use crate::file::metadata::{ChunkMetadata, TSDataType, TimeseriesMetadata};
 use crate::file::reader::{ChunkReader, PageReader, RowIter, SectionReader, SensorReader};
@@ -15,6 +17,25 @@ use crate::file::statistics::{
     LongStatistics, Statistic,
 };
 use crate::utils::io::*;
+use snafu::Snafu;
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Unable to decompress chunk data: {}", source))]
+    DecompressChunkData { source: compress::Error },
+    #[snafu(display("Unable to decompress chunk data: {}", source))]
+    DecodePageData { source: compress::Error },
+    #[snafu(display("Unable to get chunk reader i:{}, max length:{}, {}", i, len, source))]
+    GetChunkReaderI {
+        i: i32,
+        len: usize,
+        source: compress::Error,
+    },
+    #[snafu(display("Unable to get cursor from reader, {}", source))]
+    GetCursor { source: crate::file::reader::Error },
+}
+
+type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug)]
 pub struct TsFileSensorReader<R: SectionReader> {
@@ -48,26 +69,32 @@ impl<R: 'static + SectionReader> SensorReader for TsFileSensorReader<R> {
     fn get_chunk_reader(
         &self,
         i: usize,
-    ) -> Result<Box<dyn ChunkReader<Item=Box<dyn PageReader>>>> {
-        match &self.meta.get(i) {
-            None => Err(TsFileError::General("123".to_string())),
-            Some(chunk) => {
-                let offset = chunk.offset_chunk_header();
-                //TODO 多读取了一部分数据
-                let mut header_reader = self.reader.get_cursor(offset as u64, 1 * 1024)?;
-
-                let chunk_header = ChunkHeader::try_from(header_reader.borrow_mut())?;
-
-                let first_page = header_reader.position() + offset as u64;
-
-                Ok(Box::new(DefaultChunkReader::new(
-                    self.reader
-                        .get_cursor(first_page, chunk_header.data_size as usize)?,
-                    chunk_header,
-                    chunk.statistic(),
-                )?))
+    ) -> Result<Box<dyn ChunkReader<Item = Box<dyn PageReader>>>> {
+        let chunk_meta = &self.meta.get(i);
+        ensure!(
+            !chunk_meta.is_some(),
+            GetChunkReaderI {
+                i,
+                len: self.meta.len()
             }
-        }
+        );
+        let chunk = chunk_meta.unwrap();
+        let offset = chunk.offset_chunk_header();
+        //TODO 多读取了一部分数据
+        let mut header_reader = self
+            .reader
+            .get_cursor(offset as u64, 1 * 1024)
+            .context(GetCursor {})?;
+        let chunk_header = ChunkHeader::try_from(header_reader.borrow_mut())?;
+
+        let first_page = header_reader.position() + offset as u64;
+
+        Ok(Box::new(DefaultChunkReader::new(
+            self.reader
+                .get_cursor(first_page, chunk_header.data_size as usize)?,
+            chunk_header,
+            chunk.statistic(),
+        )?))
     }
 }
 
@@ -168,16 +195,15 @@ impl Iterator for DefaultChunkReader {
     }
 }
 
-impl ChunkReader for DefaultChunkReader {
-}
+impl ChunkReader for DefaultChunkReader {}
 
 impl PageReader for DefaultPageReader {
     fn header(&self) -> &PageHeader {
         &self.header
     }
 
-    fn data(&self) -> (Vec<Field>, Vec<Field>) {
-        let mut data = Cursor::new(self.data.un_compress());
+    fn data(&self) -> Result<(Vec<Field>, Vec<Field>)> {
+        let mut data = Cursor::new(self.data.un_compress().context(DecompressChunkData)?);
         let time_len = data.read_unsigned_varint_32().expect("123");
 
         let mut time_data: Vec<u8> = vec![0; time_len as usize];
@@ -185,8 +211,11 @@ impl PageReader for DefaultPageReader {
         let time = LongBinaryDecoder::new()
             .decode(&mut Cursor::new(time_data))
             .expect("123");
-        let data = self.value_decoder.decode(&mut data).expect("123");
-        (time, data)
+        let data = self
+            .value_decoder
+            .decode(&mut data)
+            .context(DecodePageData)?;
+        Ok((time, data))
     }
 }
 

@@ -1,14 +1,24 @@
 use std::fs::File;
+use std::io;
 use std::io::{Cursor, Read};
 use std::sync::Arc;
 
+use snafu::{ResultExt, Snafu};
+
 use crate::chunk::reader::PageHeader;
 use crate::encoding::decoder::Field;
-use crate::error::Result;
 use crate::file::metadata::{
     ChunkMetadata, MetadataIndexNodeType, TimeseriesMetadata, TsFileMetadata,
 };
 use crate::utils::io::FileSource;
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Unable to read fixed length {} data: {}", len, source))]
+    ReadFixedLength { len: usize, source: io::Error },
+}
+
+type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub trait Length {
     fn len(&self) -> u64;
@@ -26,12 +36,12 @@ pub trait SectionReader: Length {
 
 pub trait FileReader {
     fn metadata(&self) -> &TsFileMetadata;
-    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item=MetadataIndexNodeType>>;
+    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item = MetadataIndexNodeType>>;
     fn get_device_reader();
     fn sensor_meta_iter(
         &self,
         device: &str,
-    ) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>>;
+    ) -> Box<dyn SensorMetadataIter<Item = TimeseriesMetadata>>;
 
     fn get_sensor_reader(&self, device: &str, sensor: &str) -> Option<Box<dyn SensorReader>>;
 }
@@ -54,15 +64,14 @@ pub trait SensorReader {
     fn get_chunk_reader(
         &self,
         i: usize,
-    ) -> Result<Box<dyn ChunkReader<Item=Box<dyn PageReader>>>>;
+    ) -> Result<Box<dyn ChunkReader<Item = Box<dyn PageReader>>>>;
 }
 
-pub trait ChunkReader: Iterator {
-}
+pub trait ChunkReader: Iterator {}
 
 pub trait PageReader {
     fn header(&self) -> &PageHeader;
-    fn data(&self) -> (Vec<Field>, Vec<Field>);
+    fn data(&self) -> Result<(Vec<Field>, Vec<Field>)>;
 }
 
 pub struct RowIter {
@@ -90,19 +99,17 @@ impl Length for File {
 impl SectionReader for File {
     type T = FileSource<File>;
 
-    fn get_read(&self, start: u64, length: usize) -> Result<Self::T> {
-        Ok(FileSource::new(self, start, length))
+    fn get_read(&self, start: u64, length: usize) -> Self::T {
+        FileSource::new(self, start, length)
     }
 
     fn get_cursor(&self, start: u64, len: usize) -> Result<Cursor<Vec<u8>>> {
-        match self.get_read(start, len) {
-            Ok(mut reader) => {
-                let mut data = vec![0; len];
-                reader.read_exact(&mut data);
-                Ok(Cursor::new(data))
-            }
-            Err(e) => Err(e),
-        }
+        let mut reader = self.get_read(start, len);
+        let mut data = vec![0; len];
+        reader
+            .read_exact(&mut data)
+            .context(ReadFixedLength { len })?;
+        Ok(Cursor::new(data))
     }
 }
 

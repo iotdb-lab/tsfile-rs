@@ -6,7 +6,6 @@ use byteorder::{BigEndian, ReadBytesExt};
 use varint::VarintRead;
 
 use crate::error::TsFileError;
-use crate::utils::io::BigEndianReader;
 
 #[derive(Debug)]
 pub enum Statistic {

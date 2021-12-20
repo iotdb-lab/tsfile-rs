@@ -1,4 +1,4 @@
-use std::borrow::{BorrowMut};
+use std::borrow::BorrowMut;
 use std::convert::TryFrom;
 use std::io::{Cursor, Read};
 use std::sync::Arc;
@@ -15,7 +15,6 @@ use crate::file::metadata::MetadataIndexNodeType::{
 use crate::file::metadata::TSDataType::Boolean;
 use crate::file::metadata::TimeseriesMetadataType::{MoreChunks, OneChunk};
 use crate::file::statistics::*;
-use crate::utils::io::{BigEndianReader, VarIntReader};
 
 #[derive(Debug)]
 pub struct TsFileMetadata {
@@ -187,7 +186,9 @@ impl TimeseriesMetadata {
     pub fn chunk_metadata_list(self) -> Vec<ChunkMetadata> {
         self.chunk_metadata_list
     }
-    pub fn measurement_id(&self) -> &str { self.measurement_id.as_str() }
+    pub fn measurement_id(&self) -> &str {
+        self.measurement_id.as_str()
+    }
 }
 
 impl TimeseriesMetadataType {
@@ -444,9 +445,7 @@ impl MetadataIndexNodeType {
                     _ => Err(General("123".to_string())),
                 }
             }
-            Err(e) => {
-                Err(TsFileError::General(e.to_string()))
-            }
+            Err(e) => Err(TsFileError::General(e.to_string())),
         }
     }
 }

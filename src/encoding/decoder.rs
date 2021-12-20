@@ -1,7 +1,7 @@
 use std::io::Cursor;
 
 use crate::error::Result;
-use crate::utils::io::{BigEndianReader, PackWidthReader};
+use crate::utils::cursor::PackWidthReader;
 
 #[derive(Debug)]
 pub enum Field {
@@ -15,8 +15,8 @@ pub enum Field {
 
 pub trait Decoder {
     fn new() -> Self
-        where
-            Self: Sized;
+    where
+        Self: Sized;
     fn decode(&self, data: &mut Cursor<Vec<u8>>) -> Result<Vec<Field>>;
 }
 

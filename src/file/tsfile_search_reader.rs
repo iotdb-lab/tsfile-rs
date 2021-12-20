@@ -66,7 +66,7 @@ impl<R: 'static + SectionReader> TsFileSearchReader<R> {
     ) -> Option<Vec<TimeseriesMetadata>> {
         let binary_search = |c: &MetaDataIndexNode,
                              calc: Box<dyn Fn(&MetadataIndexEntry) -> Ordering>|
-                             -> Option<(i64, i64, usize)> {
+         -> Option<(i64, i64, usize)> {
             let index = match c.children().binary_search_by(calc) {
                 Ok(r) => r,
                 Err(r) => {
@@ -147,7 +147,7 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
         &self.metadata
     }
 
-    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item=MetadataIndexNodeType>> {
+    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item = MetadataIndexNodeType>> {
         let mut stack = Vec::new();
         stack.push(self.metadata.file_meta().metadata_index().clone());
         Box::new(DeviceMetadataReader::new(self.reader.clone(), stack))
@@ -160,7 +160,7 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
     fn sensor_meta_iter(
         &self,
         device: &str,
-    ) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>> {
+    ) -> Box<dyn SensorMetadataIter<Item = TimeseriesMetadata>> {
         let mut stack = Vec::new();
         stack.push(self.metadata.file_meta().metadata_index().clone());
         Box::new(SensorMetadataReader::new(

@@ -21,24 +21,22 @@ mod tests {
         let path = "/Users/liudawei/allfiles/workspace/rust/TsFile-rs/1637893124311-1-3-0.tsfile";
         if let Ok(reader) = TsFileSearchReader::try_from(path) {
             let device_meta = reader.device_meta_iter();
-            device_meta.for_each(|meta|
-                match meta {
-                    InternalDevice(f) | LeafDevice(f) => {
-                        let device_name = f.children().first().expect("123").name();
-                        let sensors = reader.sensor_meta_iter(device_name);
-                        sensors.for_each(|s|
-                            if let Some(option) =
+            device_meta.for_each(|meta| match meta {
+                InternalDevice(f) | LeafDevice(f) => {
+                    let device_name = f.children().first().expect("123").name();
+                    let sensors = reader.sensor_meta_iter(device_name);
+                    sensors.for_each(|s| {
+                        if let Some(option) =
                             reader.get_sensor_reader(device_name, s.measurement_id())
-                            {
-                                if let Ok(x) = option.get_chunk_reader(0) {
-                                    x.for_each(|y| println!("{:?}", y.data()));
-                                }
+                        {
+                            if let Ok(x) = option.get_chunk_reader(0) {
+                                x.for_each(|y| println!("{:?}", y.data()));
                             }
-                        )
-                    }
-                    _ => {}
-                });
-
+                        }
+                    })
+                }
+                _ => {}
+            });
 
             // let x1 = reader.sensor_meta_iter();
             // x1.for_each(|f| f.for_each(|y| println!("{:?}", y)));
