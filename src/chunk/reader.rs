@@ -2,7 +2,7 @@ use std::borrow::BorrowMut;
 use std::io::{Cursor, Read};
 use std::sync::Arc;
 
-use crate::encoding::decoder::{Decoder, IntPlainDecoder, LongBinaryDecoder};
+use crate::encoding::decoder::{Decoder, Field, IntPlainDecoder, LongBinaryDecoder};
 use byteorder::{ReadBytesExt};
 use varint::VarintRead;
 
@@ -68,10 +68,6 @@ impl<R: 'static + SectionReader> SensorReader for TsFileSensorReader<R> {
                 )?))
             }
         }
-    }
-
-    fn get_page_iter(&self, _predicate: Box<dyn Fn(u64) -> bool>) -> crate::error::Result<RowIter> {
-        todo!()
     }
 }
 
@@ -172,14 +168,15 @@ impl Iterator for DefaultChunkReader {
     }
 }
 
-impl ChunkReader for DefaultChunkReader {}
+impl ChunkReader for DefaultChunkReader {
+}
 
 impl PageReader for DefaultPageReader {
     fn header(&self) -> &PageHeader {
         &self.header
     }
 
-    fn data(&self) {
+    fn data(&self) -> (Vec<Field>, Vec<Field>) {
         let mut data = Cursor::new(self.data.un_compress());
         let time_len = data.read_unsigned_varint_32().expect("123");
 
@@ -189,8 +186,7 @@ impl PageReader for DefaultPageReader {
             .decode(&mut Cursor::new(time_data))
             .expect("123");
         let data = self.value_decoder.decode(&mut data).expect("123");
-        println!("time:{:?}", time);
-        println!("data:{:?}", data);
+        (time, data)
     }
 }
 

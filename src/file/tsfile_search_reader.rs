@@ -159,22 +159,22 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
 
     fn sensor_meta_iter(
         &self,
-        device: String,
+        device: &str,
     ) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>> {
         let mut stack = Vec::new();
         stack.push(self.metadata.file_meta().metadata_index().clone());
         Box::new(SensorMetadataReader::new(
             self.reader.clone(),
             stack,
-            device,
+            device.to_string(),
         ))
     }
 
-    fn get_sensor_reader(&self, device: String, sensor: String) -> Option<Box<dyn SensorReader>> {
+    fn get_sensor_reader(&self, device: &str, sensor: &str) -> Option<Box<dyn SensorReader>> {
         match self.binary_search_meta(
             self.metadata.file_meta().metadata_index().clone(),
-            device,
-            sensor,
+            device.to_string(),
+            sensor.to_string(),
         ) {
             None => None,
             Some(time_series) => Some(Box::new(TsFileSensorReader::new(

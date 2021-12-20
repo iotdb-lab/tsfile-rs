@@ -187,6 +187,7 @@ impl TimeseriesMetadata {
     pub fn chunk_metadata_list(self) -> Vec<ChunkMetadata> {
         self.chunk_metadata_list
     }
+    pub fn measurement_id(&self) -> &str { self.measurement_id.as_str() }
 }
 
 impl TimeseriesMetadataType {
