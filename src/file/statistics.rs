@@ -3,9 +3,20 @@ use std::convert::TryFrom;
 use std::io::Cursor;
 
 use byteorder::{BigEndian, ReadBytesExt};
+use snafu::{ResultExt, Snafu};
 use varint::VarintRead;
+use crate::utils::cursor;
+use crate::utils::cursor::VarIntReader;
 
-use crate::error::TsFileError;
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Unable to read unsigned VarInt data: {}", source))]
+    ReadUnsignedVarInt { source: std::io::Error },
+    #[snafu(display("Unable to read cursor data: {}", source))]
+    ReadCursorData { source: std::io::Error },
+    #[snafu(display("Unable to read cursor data: {}", source))]
+    ReadVarData { source: cursor::Error },
+}
 
 #[derive(Debug)]
 pub enum Statistic {
@@ -81,93 +92,96 @@ pub struct FloatStatistics {
 }
 
 impl TryFrom<&mut Cursor<Vec<u8>>> for StatisticHeader {
-    type Error = TsFileError;
+    type Error = Error;
 
     fn try_from(cursor: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+        let count = cursor.read_unsigned_varint_32().context(ReadUnsignedVarInt)? as i32;
+        let start_time = cursor.read_i64::<BigEndian>().context(ReadCursorData)?;
+        let end_time = cursor.read_i64::<BigEndian>().context(ReadCursorData)?;
         Ok(Self {
-            count: cursor.read_unsigned_varint_32()? as i32,
-            start_time: cursor.read_big_endian_i64(),
-            end_time: cursor.read_big_endian_i64(),
+            count,
+            start_time,
+            end_time,
             is_empty: false,
         })
     }
 }
 
 impl TryFrom<&mut Cursor<Vec<u8>>> for BooleanStatistics {
-    type Error = TsFileError;
+    type Error = Error;
 
     fn try_from(cursor: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
         Ok(Self {
             header: StatisticHeader::try_from(cursor.borrow_mut())?,
-            first_value: cursor.read_bool(),
-            last_value: cursor.read_bool(),
-            sum_value: cursor.read_big_endian_i64(),
+            first_value: cursor.read_bool().context(ReadVarData)?,
+            last_value: cursor.read_bool().context(ReadVarData)?,
+            sum_value: cursor.read_i64::<BigEndian>().context(ReadCursorData)?,
         })
     }
 }
 
 impl TryFrom<&'_ mut Cursor<Vec<u8>>> for IntegerStatistics {
-    type Error = TsFileError;
+    type Error = Error;
 
     fn try_from(cursor: &'_ mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
         Ok(Self {
             header: StatisticHeader::try_from(cursor.borrow_mut())?,
-            min_value: cursor.read_big_endian_i32(),
-            max_value: cursor.read_big_endian_i32(),
-            first_value: cursor.read_big_endian_i32(),
-            last_value: cursor.read_big_endian_i32(),
-            sum_value: cursor.read_big_endian_i64(),
+            min_value: cursor.read_i32::<BigEndian>().context(ReadCursorData)?,
+            max_value: cursor.read_i32::<BigEndian>().context(ReadCursorData)?,
+            first_value: cursor.read_i32::<BigEndian>().context(ReadCursorData)?,
+            last_value: cursor.read_i32::<BigEndian>().context(ReadCursorData)?,
+            sum_value: cursor.read_i64::<BigEndian>().context(ReadCursorData)?,
         })
     }
 }
 
 impl TryFrom<&'_ mut Cursor<Vec<u8>>> for FloatStatistics {
-    type Error = TsFileError;
+    type Error = Error;
 
     fn try_from(cursor: &'_ mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
         Ok(Self {
             header: StatisticHeader::try_from(cursor.borrow_mut())?,
-            min_value: cursor.read_f32::<BigEndian>()?,
-            max_value: cursor.read_f32::<BigEndian>()?,
-            first_value: cursor.read_f32::<BigEndian>()?,
-            last_value: cursor.read_f32::<BigEndian>()?,
-            sum_value: cursor.read_f64::<BigEndian>()?,
+            min_value: cursor.read_f32::<BigEndian>().context(ReadCursorData)?,
+            max_value: cursor.read_f32::<BigEndian>().context(ReadCursorData)?,
+            first_value: cursor.read_f32::<BigEndian>().context(ReadCursorData)?,
+            last_value: cursor.read_f32::<BigEndian>().context(ReadCursorData)?,
+            sum_value: cursor.read_f64::<BigEndian>().context(ReadCursorData)?,
         })
     }
 }
 
 impl TryFrom<&'_ mut Cursor<Vec<u8>>> for DoubleStatistics {
-    type Error = TsFileError;
+    type Error = Error;
 
     fn try_from(cursor: &'_ mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
         Ok(Self {
             header: StatisticHeader::try_from(cursor.borrow_mut())?,
-            min_value: cursor.read_f64::<BigEndian>()?,
-            max_value: cursor.read_f64::<BigEndian>()?,
-            first_value: cursor.read_f64::<BigEndian>()?,
-            last_value: cursor.read_f64::<BigEndian>()?,
-            sum_value: cursor.read_f64::<BigEndian>()?,
+            min_value: cursor.read_f64::<BigEndian>().context(ReadCursorData)?,
+            max_value: cursor.read_f64::<BigEndian>().context(ReadCursorData)?,
+            first_value: cursor.read_f64::<BigEndian>().context(ReadCursorData)?,
+            last_value: cursor.read_f64::<BigEndian>().context(ReadCursorData)?,
+            sum_value: cursor.read_f64::<BigEndian>().context(ReadCursorData)?,
         })
     }
 }
 
 impl TryFrom<&'_ mut Cursor<Vec<u8>>> for LongStatistics {
-    type Error = TsFileError;
+    type Error = Error;
 
     fn try_from(cursor: &'_ mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
         Ok(Self {
             header: StatisticHeader::try_from(cursor.borrow_mut())?,
-            min_value: cursor.read_i64::<BigEndian>()?,
-            max_value: cursor.read_i64::<BigEndian>()?,
-            first_value: cursor.read_i64::<BigEndian>()?,
-            last_value: cursor.read_i64::<BigEndian>()?,
-            sum_value: cursor.read_f64::<BigEndian>()?,
+            min_value: cursor.read_i64::<BigEndian>().context(ReadCursorData)?,
+            max_value: cursor.read_i64::<BigEndian>().context(ReadCursorData)?,
+            first_value: cursor.read_i64::<BigEndian>().context(ReadCursorData)?,
+            last_value: cursor.read_i64::<BigEndian>().context(ReadCursorData)?,
+            sum_value: cursor.read_f64::<BigEndian>().context(ReadCursorData)?,
         })
     }
 }
 
 impl TryFrom<&'_ mut Cursor<Vec<u8>>> for BinaryStatistics {
-    type Error = TsFileError;
+    type Error = Error;
 
     fn try_from(_value: &'_ mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
         todo!()

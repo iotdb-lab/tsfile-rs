@@ -4,6 +4,7 @@ use std::io::{Cursor, Read};
 use std::sync::Arc;
 
 use snafu::{ResultExt, Snafu};
+use crate::chunk;
 
 use crate::chunk::reader::PageHeader;
 use crate::encoding::decoder::Field;
@@ -30,18 +31,18 @@ pub trait TryClone: Sized {
 
 pub trait SectionReader: Length {
     type T: Read;
-    fn get_read(&self, start: u64, len: usize) -> Result<Self::T>;
+    fn get_read(&self, start: u64, len: usize) -> Self::T;
     fn get_cursor(&self, start: u64, len: usize) -> Result<Cursor<Vec<u8>>>;
 }
 
 pub trait FileReader {
     fn metadata(&self) -> &TsFileMetadata;
-    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item = MetadataIndexNodeType>>;
+    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item=MetadataIndexNodeType>>;
     fn get_device_reader();
     fn sensor_meta_iter(
         &self,
         device: &str,
-    ) -> Box<dyn SensorMetadataIter<Item = TimeseriesMetadata>>;
+    ) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>>;
 
     fn get_sensor_reader(&self, device: &str, sensor: &str) -> Option<Box<dyn SensorReader>>;
 }
@@ -64,14 +65,14 @@ pub trait SensorReader {
     fn get_chunk_reader(
         &self,
         i: usize,
-    ) -> Result<Box<dyn ChunkReader<Item = Box<dyn PageReader>>>>;
+    ) -> std::result::Result<Box<dyn ChunkReader<Item=Box<dyn PageReader>>>, chunk::reader::Error>;
 }
 
 pub trait ChunkReader: Iterator {}
 
 pub trait PageReader {
     fn header(&self) -> &PageHeader;
-    fn data(&self) -> Result<(Vec<Field>, Vec<Field>)>;
+    fn data(&self) -> std::result::Result<(Vec<Field>, Vec<Field>), chunk::reader::Error>;
 }
 
 pub struct RowIter {

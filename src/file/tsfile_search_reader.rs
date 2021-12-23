@@ -5,21 +5,35 @@ use std::io::{Cursor, Read};
 use std::path::Path;
 use std::sync::Arc;
 
+use snafu::{ResultExt, Snafu};
+
 use crate::chunk::reader::TsFileSensorReader;
-use crate::error::Result;
-use crate::error::TsFileError;
 use crate::file::footer;
-use crate::file::metadata::MetadataIndexNodeType::*;
 use crate::file::metadata::{
-    MetaDataIndexNode, MetadataIndexEntry, MetadataIndexNodeType, TimeseriesMetadata,
+    MetadataIndexEntry, MetaDataIndexNode, MetadataIndexNodeType, TimeseriesMetadata,
     TimeseriesMetadataType, TsFileMetadata,
 };
+use crate::file::metadata::MetadataIndexNodeType::*;
 use crate::file::reader::{
     DeviceMetadataIter, FileReader, SectionReader, SensorMetadataIter, SensorReader,
 };
+use crate::utils::cursor;
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Unable to open file: {}", source))]
+    OpenFile { source: std::io::Error },
+    #[snafu(display("Unable to read data: {}", source))]
+    ReadData { source: std::io::Error },
+    #[snafu(display("Unable to parser footer: {}", source))]
+    ParserFooter { source: footer::Error },
+}
+
+type Result<T, E = Error> = std::result::Result<T, E>;
+
 
 impl TryFrom<File> for TsFileSearchReader<File> {
-    type Error = TsFileError;
+    type Error = Error;
 
     fn try_from(file: File) -> Result<Self> {
         Self::new(file)
@@ -27,16 +41,16 @@ impl TryFrom<File> for TsFileSearchReader<File> {
 }
 
 impl<'a> TryFrom<&'a Path> for TsFileSearchReader<File> {
-    type Error = TsFileError;
+    type Error = Error;
 
     fn try_from(path: &Path) -> Result<Self> {
-        let file = File::open(path)?;
+        let file = File::open(path).context(OpenFile)?;
         Self::try_from(file)
     }
 }
 
 impl TryFrom<String> for TsFileSearchReader<File> {
-    type Error = TsFileError;
+    type Error = Error;
 
     fn try_from(path: String) -> Result<Self> {
         Self::try_from(Path::new(&path))
@@ -44,7 +58,7 @@ impl TryFrom<String> for TsFileSearchReader<File> {
 }
 
 impl<'a> TryFrom<&'a str> for TsFileSearchReader<File> {
-    type Error = TsFileError;
+    type Error = Error;
 
     fn try_from(path: &str) -> Result<Self> {
         Self::try_from(Path::new(&path))
@@ -66,7 +80,7 @@ impl<R: 'static + SectionReader> TsFileSearchReader<R> {
     ) -> Option<Vec<TimeseriesMetadata>> {
         let binary_search = |c: &MetaDataIndexNode,
                              calc: Box<dyn Fn(&MetadataIndexEntry) -> Ordering>|
-         -> Option<(i64, i64, usize)> {
+                             -> Option<(i64, i64, usize)> {
             let index = match c.children().binary_search_by(calc) {
                 Ok(r) => r,
                 Err(r) => {
@@ -128,12 +142,11 @@ impl<R: 'static + SectionReader> TsFileSearchReader<R> {
                     return None;
                 }
                 Some((s, len, _)) => {
-                    if let Ok(mut reader) = self.reader.get_read(s as u64, len as usize) {
-                        let mut data = vec![0; len as usize];
-                        reader.read_exact(&mut data);
-                        if let Ok(result) = MetadataIndexNodeType::new(&mut Cursor::new(data)) {
-                            stack.push(result);
-                        }
+                    let mut reader = self.reader.get_read(s as u64, len as usize);
+                    let mut data = vec![0; len as usize];
+                    reader.read_exact(&mut data).context(ReadData);
+                    if let Ok(result) = MetadataIndexNodeType::new(&mut Cursor::new(data)) {
+                        stack.push(result);
                     }
                 }
             }
@@ -147,7 +160,7 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
         &self.metadata
     }
 
-    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item = MetadataIndexNodeType>> {
+    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item=MetadataIndexNodeType>> {
         let mut stack = Vec::new();
         stack.push(self.metadata.file_meta().metadata_index().clone());
         Box::new(DeviceMetadataReader::new(self.reader.clone(), stack))
@@ -160,7 +173,7 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
     fn sensor_meta_iter(
         &self,
         device: &str,
-    ) -> Box<dyn SensorMetadataIter<Item = TimeseriesMetadata>> {
+    ) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>> {
         let mut stack = Vec::new();
         stack.push(self.metadata.file_meta().metadata_index().clone());
         Box::new(SensorMetadataReader::new(
@@ -324,7 +337,7 @@ impl<R: SectionReader> Iterator for SensorMetadataReader<R> {
 
 impl<R: 'static + SectionReader> TsFileSearchReader<R> {
     pub fn new(file: R) -> Result<Self> {
-        let metadata = footer::parser_metadata(&file)?;
+        let metadata = footer::parser_metadata(&file).context(ParserFooter)?;
         Ok(Self {
             reader: Arc::new(file),
             metadata,

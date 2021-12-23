@@ -2,6 +2,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 use snafu::{ResultExt, Snafu};
 use std::io;
 use std::io::{Cursor, Read};
+use std::string::FromUtf8Error;
 use varint::VarintRead;
 
 #[derive(Debug, Snafu)]
@@ -9,7 +10,7 @@ pub enum Error {
     #[snafu(display("Unable to read unsigned VarInt32: {}", source))]
     ReadUnsignedVarInt { source: io::Error },
     #[snafu(display("Unable to convert data to UTF8-String: {}", source))]
-    ReadUTF8String { source: io::Error },
+    ReadUTF8String { source: FromUtf8Error },
     #[snafu(display("Unable to read fixed length {} data: {}", len, source))]
     ReadFixedLengthData { len: usize, source: io::Error },
 }
@@ -28,6 +29,14 @@ pub trait VarIntReader: VarintRead {
         self.read_exact(&mut data)
             .context(ReadFixedLengthData { len })?;
         Ok(String::from_utf8(data).context(ReadUTF8String)?)
+    }
+
+    fn read_bool(&mut self) -> Result<bool> {
+        let d = self.read_u8().context(ReadFixedLengthData { len: 1 as usize })?;
+        Ok(match d {
+            0 => false,
+            _ => true,
+        })
     }
 }
 

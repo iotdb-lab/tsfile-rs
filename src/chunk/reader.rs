@@ -4,11 +4,9 @@ use std::sync::Arc;
 
 use crate::encoding::decoder::{Decoder, Field, IntPlainDecoder, LongBinaryDecoder};
 use byteorder::ReadBytesExt;
-use snafu::{ensure, OptionExt, ResultExt};
 use varint::VarintRead;
 
-use crate::chunk::reader::Error::GetCursor;
-use crate::file::compress;
+use crate::file::{compress, statistics};
 use crate::file::compress::Snappy;
 use crate::file::metadata::{ChunkMetadata, TSDataType, TimeseriesMetadata};
 use crate::file::reader::{ChunkReader, PageReader, RowIter, SectionReader, SensorReader};
@@ -17,22 +15,31 @@ use crate::file::statistics::{
     LongStatistics, Statistic,
 };
 use crate::utils::io::*;
-use snafu::Snafu;
+use snafu::{ensure, ResultExt, Snafu};
+use crate::chunk;
+use crate::encoding::decoder;
+use crate::utils::cursor;
+use crate::utils::cursor::VarIntReader;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Unable to decompress chunk data: {}", source))]
     DecompressChunkData { source: compress::Error },
     #[snafu(display("Unable to decompress chunk data: {}", source))]
-    DecodePageData { source: compress::Error },
-    #[snafu(display("Unable to get chunk reader i:{}, max length:{}, {}", i, len, source))]
+    DecodePageData { source: decoder::Error },
+    #[snafu(display("Unable to get chunk reader i:{}, max length:{}", i, len))]
     GetChunkReaderI {
-        i: i32,
+        i: usize,
         len: usize,
-        source: compress::Error,
     },
     #[snafu(display("Unable to get cursor from reader, {}", source))]
     GetCursor { source: crate::file::reader::Error },
+    #[snafu(display("Unable to read VarInt string, {}", source))]
+    ReadVarIntString { source: cursor::Error },
+    #[snafu(display("Unable to read cursor data, {}", source))]
+    ReadCursorData { source: std::io::Error },
+    #[snafu(display("Unable to read {} type statistics, {}", s_type, source))]
+    ReadStatistics { s_type: String, source: statistics::Error },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -69,15 +76,9 @@ impl<R: 'static + SectionReader> SensorReader for TsFileSensorReader<R> {
     fn get_chunk_reader(
         &self,
         i: usize,
-    ) -> Result<Box<dyn ChunkReader<Item = Box<dyn PageReader>>>> {
+    ) -> std::result::Result<Box<dyn ChunkReader<Item=Box<dyn PageReader>>>, chunk::reader::Error> {
         let chunk_meta = &self.meta.get(i);
-        ensure!(
-            !chunk_meta.is_some(),
-            GetChunkReaderI {
-                i,
-                len: self.meta.len()
-            }
-        );
+        ensure!(chunk_meta.is_some(), GetChunkReaderI {i,len: self.meta.len()});
         let chunk = chunk_meta.unwrap();
         let offset = chunk.offset_chunk_header();
         //TODO 多读取了一部分数据
@@ -91,7 +92,8 @@ impl<R: 'static + SectionReader> SensorReader for TsFileSensorReader<R> {
 
         Ok(Box::new(DefaultChunkReader::new(
             self.reader
-                .get_cursor(first_page, chunk_header.data_size as usize)?,
+                .get_cursor(first_page, chunk_header.data_size as usize)
+                .context(GetCursor {})?,
             chunk_header,
             chunk.statistic(),
         )?))
@@ -117,11 +119,11 @@ impl DefaultChunkReader {
             match header.chunk_type {
                 //chunk only have one page
                 5 => {
-                    let uncompressed_size = cursor.read_unsigned_varint_32()?;
-                    let compressed_size = cursor.read_unsigned_varint_32()?;
+                    let uncompressed_size = cursor.read_unsigned_varint_32().context(ReadCursorData)?;
+                    let compressed_size = cursor.read_unsigned_varint_32().context(ReadCursorData)?;
 
                     let mut data = vec![0; compressed_size as usize];
-                    cursor.read_exact(&mut data)?;
+                    cursor.read_exact(&mut data).context(ReadCursorData)?;
                     pages.push(Box::new(DefaultPageReader {
                         header: PageHeader::new(
                             uncompressed_size,
@@ -136,31 +138,31 @@ impl DefaultChunkReader {
                     }));
                 }
                 _ => {
-                    let uncompressed_size = cursor.read_unsigned_varint_32()?;
-                    let compressed_size = cursor.read_unsigned_varint_32()?;
+                    let uncompressed_size = cursor.read_unsigned_varint_32().context(ReadCursorData)?;
+                    let compressed_size = cursor.read_unsigned_varint_32().context(ReadCursorData)?;
                     let page_statistic = Arc::new(match *statistic {
                         Statistic::Boolean(_) => {
-                            Statistic::Boolean(BooleanStatistics::try_from(cursor.borrow_mut())?)
+                            Statistic::Boolean(BooleanStatistics::try_from(cursor.borrow_mut()).context(ReadStatistics { s_type: "boolean".to_string() })?)
                         }
                         Statistic::Int32(_) => {
-                            Statistic::Int32(IntegerStatistics::try_from(cursor.borrow_mut())?)
+                            Statistic::Int32(IntegerStatistics::try_from(cursor.borrow_mut()).context(ReadStatistics { s_type: "Int32".to_string() })?)
                         }
                         Statistic::Int64(_) => {
-                            Statistic::Int64(LongStatistics::try_from(cursor.borrow_mut())?)
+                            Statistic::Int64(LongStatistics::try_from(cursor.borrow_mut()).context(ReadStatistics { s_type: "Int64".to_string() })?)
                         }
                         Statistic::FLOAT(_) => {
-                            Statistic::FLOAT(FloatStatistics::try_from(cursor.borrow_mut())?)
+                            Statistic::FLOAT(FloatStatistics::try_from(cursor.borrow_mut()).context(ReadStatistics { s_type: "FLOAT".to_string() })?)
                         }
                         Statistic::DOUBLE(_) => {
-                            Statistic::DOUBLE(DoubleStatistics::try_from(cursor.borrow_mut())?)
+                            Statistic::DOUBLE(DoubleStatistics::try_from(cursor.borrow_mut()).context(ReadStatistics { s_type: "DOUBLE".to_string() })?)
                         }
                         Statistic::TEXT(_) => {
-                            Statistic::TEXT(BinaryStatistics::try_from(cursor.borrow_mut())?)
+                            Statistic::TEXT(BinaryStatistics::try_from(cursor.borrow_mut()).context(ReadStatistics { s_type: "TEXT".to_string() })?)
                         }
                     });
 
                     let mut data = vec![0; compressed_size as usize];
-                    cursor.read_exact(&mut data)?;
+                    cursor.read_exact(&mut data).context(ReadCursorData)?;
 
                     pages.push(Box::new(DefaultPageReader {
                         header: PageHeader::new(uncompressed_size, compressed_size, page_statistic),
@@ -252,16 +254,16 @@ pub struct ChunkHeader {
 }
 
 impl TryFrom<&mut Cursor<Vec<u8>>> for ChunkHeader {
-    type Error = TsFileError;
+    type Error = Error;
 
     fn try_from(cursor: &mut Cursor<Vec<u8>>) -> std::result::Result<Self, Self::Error> {
         //mark
-        let chunk_type = cursor.read_u8()?;
-        let measurement_id = cursor.read_varint_string()?;
-        let data_size = cursor.read_unsigned_varint_32()?;
-        let data_type = TSDataType::new(cursor.read_u8()?)?;
-        let compression_type = CompressionType::new(cursor.read_u8()?);
-        let encoding_type = TSEncoding::new(cursor.read_u8()?);
+        let chunk_type = cursor.read_u8().context(ReadCursorData)?;
+        let measurement_id = cursor.read_varint_string().context(ReadVarIntString)?;
+        let data_size = cursor.read_unsigned_varint_32().context(ReadCursorData)?;
+        let data_type = TSDataType::new(cursor.read_u8().context(ReadCursorData)?);
+        let compression_type = CompressionType::new(cursor.read_u8().context(ReadCursorData)?);
+        let encoding_type = TSEncoding::new(cursor.read_u8().context(ReadCursorData)?);
 
         Ok(Self {
             chunk_type,

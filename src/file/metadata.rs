@@ -4,17 +4,32 @@ use std::io::{Cursor, Read};
 use std::sync::Arc;
 
 use bit_set::BitSet;
-use byteorder::ReadBytesExt;
+use byteorder::{BigEndian, ReadBytesExt};
+use snafu::ResultExt;
 use varint::VarintRead;
 
-use crate::error::TsFileError::General;
-use crate::error::{Result, TsFileError};
 use crate::file::metadata::MetadataIndexNodeType::{
     InternalDevice, InternalMeasurement, LeafDevice, LeafMeasurement,
 };
 use crate::file::metadata::TSDataType::Boolean;
 use crate::file::metadata::TimeseriesMetadataType::{MoreChunks, OneChunk};
 use crate::file::statistics::*;
+use crate::utils::cursor;
+use crate::utils::cursor::VarIntReader;
+use snafu::{Snafu};
+use crate::file::statistics;
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Unable to read VarInt or string: {}", source))]
+    ReadVarInt { source: cursor::Error },
+    #[snafu(display("Unable to read cursor data: {}", source))]
+    ReadCursorData { source: std::io::Error },
+    #[snafu(display("Unable to parser {} type statistics: {}", s_type, source))]
+    ParserStatistics { s_type: String, source: statistics::Error },
+}
+
+type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug)]
 pub struct TsFileMetadata {
@@ -193,52 +208,44 @@ impl TimeseriesMetadata {
 
 impl TimeseriesMetadataType {
     pub fn new(cursor: &mut Cursor<Vec<u8>>) -> Result<TimeseriesMetadata> {
-        let meta_type = match cursor.read_u8()? {
+        let meta_type = match cursor.read_u8().context(ReadCursorData)? {
             0 => TimeseriesMetadataType::OneChunk,
             _ => TimeseriesMetadataType::MoreChunks,
         };
-        let measurement_id = cursor.read_varint_string()?;
-        let data_type = TSDataType::new(cursor.read_u8()?)?;
-        let chunk_metadata_list_size = cursor.read_unsigned_varint_32()?;
+        let measurement_id = cursor.read_varint_string().context(ReadVarInt)?;
+        let data_type = TSDataType::new(cursor.read_u8().context(ReadCursorData)?);
+        let chunk_metadata_list_size = cursor.read_unsigned_varint_32().context(ReadCursorData)?;
 
         let statistics = Arc::new(match data_type {
-            Boolean => Statistic::Boolean(BooleanStatistics::try_from(cursor.borrow_mut())?),
+            Boolean => Statistic::Boolean(BooleanStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "Boolean".to_string() })?),
             TSDataType::Int32 => {
-                Statistic::Int32(IntegerStatistics::try_from(cursor.borrow_mut())?)
+                Statistic::Int32(IntegerStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "Int32".to_string() })?)
             }
-            TSDataType::Int64 => Statistic::Int64(LongStatistics::try_from(cursor.borrow_mut())?),
-            TSDataType::FLOAT => Statistic::FLOAT(FloatStatistics::try_from(cursor.borrow_mut())?),
+            TSDataType::Int64 => Statistic::Int64(LongStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "Int64".to_string() })?),
+            TSDataType::FLOAT => Statistic::FLOAT(FloatStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "FLOAT".to_string() })?),
             TSDataType::DOUBLE => {
-                Statistic::DOUBLE(DoubleStatistics::try_from(cursor.borrow_mut())?)
+                Statistic::DOUBLE(DoubleStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "DOUBLE".to_string() })?)
             }
-            TSDataType::TEXT => Statistic::TEXT(BinaryStatistics::try_from(cursor.borrow_mut())?),
+            TSDataType::TEXT => Statistic::TEXT(BinaryStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "TEXT".to_string() })?),
         });
         let end_pos = cursor.position() + chunk_metadata_list_size as u64;
         let mut chunk_metadata_list = Vec::new();
         while cursor.position() < end_pos {
-            let offset_chunk_header = cursor.read_big_endian_i64();
+            let offset_chunk_header = cursor.read_i64::<BigEndian>().context(ReadCursorData)?;
 
             let statistic = match meta_type {
                 OneChunk => statistics.clone(),
                 MoreChunks => Arc::new(match data_type {
-                    Boolean => {
-                        Statistic::Boolean(BooleanStatistics::try_from(cursor.borrow_mut())?)
-                    }
+                    Boolean => Statistic::Boolean(BooleanStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "Boolean".to_string() })?),
                     TSDataType::Int32 => {
-                        Statistic::Int32(IntegerStatistics::try_from(cursor.borrow_mut())?)
+                        Statistic::Int32(IntegerStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "Int32".to_string() })?)
                     }
-                    TSDataType::Int64 => {
-                        Statistic::Int64(LongStatistics::try_from(cursor.borrow_mut())?)
-                    }
-                    TSDataType::FLOAT => {
-                        Statistic::FLOAT(FloatStatistics::try_from(cursor.borrow_mut())?)
-                    }
+                    TSDataType::Int64 => Statistic::Int64(LongStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "Int64".to_string() })?),
+                    TSDataType::FLOAT => Statistic::FLOAT(FloatStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "FLOAT".to_string() })?),
                     TSDataType::DOUBLE => {
-                        Statistic::DOUBLE(DoubleStatistics::try_from(cursor.borrow_mut())?)
+                        Statistic::DOUBLE(DoubleStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "DOUBLE".to_string() })?)
                     }
-                    TSDataType::TEXT => {
-                        Statistic::TEXT(BinaryStatistics::try_from(cursor.borrow_mut())?)
-                    }
+                    TSDataType::TEXT => Statistic::TEXT(BinaryStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "TEXT".to_string() })?),
                 }),
             };
             chunk_metadata_list.push(ChunkMetadata::new(
@@ -282,15 +289,14 @@ impl Clone for TSDataType {
 }
 
 impl TSDataType {
-    pub fn new(id: u8) -> Result<TSDataType> {
+    pub fn new(id: u8) -> Self {
         match id {
-            0 => Ok(Self::Boolean),
-            1 => Ok(Self::Int32),
-            2 => Ok(Self::Int64),
-            3 => Ok(Self::FLOAT),
-            4 => Ok(Self::DOUBLE),
-            5 => Ok(Self::TEXT),
-            _ => Err(TsFileError::General("123".to_string())),
+            0 => Self::Boolean,
+            1 => Self::Int32,
+            2 => Self::Int64,
+            3 => Self::FLOAT,
+            4 => Self::DOUBLE,
+            _ => Self::TEXT,
         }
     }
     // fn new(flag: u8, cursor: &mut Cursor<Vec<u8>>) -> Result<TSDataType> {
@@ -358,27 +364,23 @@ impl TsFileMetadata {
         // metadataIndex
         let metadata_index = MetadataIndexNodeType::new(&mut data).unwrap();
         // metaOffset
-        let meta_offset = data.read_big_endian_i64();
+        let meta_offset = data.read_i64::<BigEndian>().context(ReadCursorData)?;
 
         // read bloom filter
         let mut bloom_filter = None;
         let length = data.get_ref().capacity();
         if data.position() < length as u64 {
-            match data.read_unsigned_varint_32() {
-                Ok(bloom_filter_size) => {
-                    let mut bytes = vec![0; bloom_filter_size as usize];
-                    data.read_exact(&mut bytes);
+            let bloom_filter_size = data.read_unsigned_varint_32().context(ReadCursorData)?;
+            let mut bytes = vec![0; bloom_filter_size as usize];
+            data.read_exact(&mut bytes).context(ReadCursorData)?;
 
-                    let filter_size = data.read_unsigned_varint_32().unwrap();
-                    let hash_function_size = data.read_unsigned_varint_32().unwrap();
-                    bloom_filter = Some(BloomFilter::new(bytes, filter_size, hash_function_size));
-                    Ok(Self {
-                        size: 0,
-                        file_meta: FileMeta::new(metadata_index, meta_offset, bloom_filter),
-                    })
-                }
-                Err(e) => Err(TsFileError::General(e.to_string())),
-            }
+            let filter_size = data.read_unsigned_varint_32().context(ReadCursorData)?;
+            let hash_function_size = data.read_unsigned_varint_32().context(ReadCursorData)?;
+            bloom_filter = Some(BloomFilter::new(bytes, filter_size, hash_function_size));
+            Ok(Self {
+                size: 0,
+                file_meta: FileMeta::new(metadata_index, meta_offset, bloom_filter),
+            })
         } else {
             Ok(Self {
                 size: 0,
@@ -421,43 +423,37 @@ impl HashFunction {
 
 impl MetadataIndexNodeType {
     pub fn new(data: &mut Cursor<Vec<u8>>) -> Result<Self> {
-        match data.read_unsigned_varint_32() {
-            Ok(len) => {
-                let mut children: Vec<MetadataIndexEntry> = Vec::with_capacity(len as usize);
-                for _i in 0..len {
-                    children.push(MetadataIndexEntry::new(data.borrow_mut()).unwrap());
-                }
+        let len = data.read_unsigned_varint_32().context(ReadCursorData)?;
+        let mut children: Vec<MetadataIndexEntry> = Vec::with_capacity(len as usize);
+        for _i in 0..len {
+            children.push(MetadataIndexEntry::new(data.borrow_mut()).unwrap());
+        }
 
-                let end_offset = data.read_big_endian_i64();
+        let end_offset = data.read_i64::<BigEndian>().context(ReadCursorData)?;
 
-                let mut vec = vec![255; 1];
-                data.read_exact(&mut vec);
+        let mut vec = vec![255; 1];
+        data.read_exact(&mut vec);
 
-                let node = MetaDataIndexNode {
-                    children,
-                    end_offset,
-                };
-                match vec[0] {
-                    0 => Ok(InternalDevice(node)),
-                    1 => Ok(LeafDevice(node)),
-                    2 => Ok(InternalMeasurement(node)),
-                    3 => Ok(LeafMeasurement(node)),
-                    _ => Err(General("123".to_string())),
-                }
-            }
-            Err(e) => Err(TsFileError::General(e.to_string())),
+        let node = MetaDataIndexNode {
+            children,
+            end_offset,
+        };
+        match vec[0] {
+            0 => Ok(InternalDevice(node)),
+            1 => Ok(LeafDevice(node)),
+            2 => Ok(InternalMeasurement(node)),
+            _ => Ok(LeafMeasurement(node)),
         }
     }
 }
 
 impl MetadataIndexEntry {
     fn new(data: &mut Cursor<Vec<u8>>) -> Result<Self> {
-        match data.read_varint_string() {
-            Ok(str) => Ok(Self {
-                name: str,
-                offset: data.read_big_endian_i64(),
-            }),
-            Err(e) => Err(TsFileError::General(e.to_string())),
-        }
+        let name = data.read_varint_string().context(ReadVarInt)?;
+        let offset = data.read_i64::<BigEndian>().context(ReadCursorData)?;
+        Ok(Self {
+            name,
+            offset,
+        })
     }
 }
