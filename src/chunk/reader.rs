@@ -6,20 +6,19 @@ use crate::encoding::decoder::{Decoder, Field, IntPlainDecoder, LongBinaryDecode
 use byteorder::ReadBytesExt;
 use varint::VarintRead;
 
-use crate::file::{compress, statistics};
+use crate::chunk;
+use crate::encoding::decoder;
 use crate::file::compress::Snappy;
 use crate::file::metadata::{ChunkMetadata, TSDataType, TimeseriesMetadata};
-use crate::file::reader::{ChunkReader, PageReader, RowIter, SectionReader, SensorReader};
+use crate::file::reader::{ChunkReader, PageReader, SectionReader, SensorReader};
 use crate::file::statistics::{
     BinaryStatistics, BooleanStatistics, DoubleStatistics, FloatStatistics, IntegerStatistics,
     LongStatistics, Statistic,
 };
-use crate::utils::io::*;
-use snafu::{ensure, ResultExt, Snafu};
-use crate::chunk;
-use crate::encoding::decoder;
+use crate::file::{compress, statistics};
 use crate::utils::cursor;
 use crate::utils::cursor::VarIntReader;
+use snafu::{ensure, ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -28,10 +27,7 @@ pub enum Error {
     #[snafu(display("Unable to decompress chunk data: {}", source))]
     DecodePageData { source: decoder::Error },
     #[snafu(display("Unable to get chunk reader i:{}, max length:{}", i, len))]
-    GetChunkReaderI {
-        i: usize,
-        len: usize,
-    },
+    GetChunkReaderI { i: usize, len: usize },
     #[snafu(display("Unable to get cursor from reader, {}", source))]
     GetCursor { source: crate::file::reader::Error },
     #[snafu(display("Unable to read VarInt string, {}", source))]
@@ -39,7 +35,10 @@ pub enum Error {
     #[snafu(display("Unable to read cursor data, {}", source))]
     ReadCursorData { source: std::io::Error },
     #[snafu(display("Unable to read {} type statistics, {}", s_type, source))]
-    ReadStatistics { s_type: String, source: statistics::Error },
+    ReadStatistics {
+        s_type: String,
+        source: statistics::Error,
+    },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -76,9 +75,16 @@ impl<R: 'static + SectionReader> SensorReader for TsFileSensorReader<R> {
     fn get_chunk_reader(
         &self,
         i: usize,
-    ) -> std::result::Result<Box<dyn ChunkReader<Item=Box<dyn PageReader>>>, chunk::reader::Error> {
+    ) -> std::result::Result<Box<dyn ChunkReader<Item = Box<dyn PageReader>>>, chunk::reader::Error>
+    {
         let chunk_meta = &self.meta.get(i);
-        ensure!(chunk_meta.is_some(), GetChunkReaderI {i,len: self.meta.len()});
+        ensure!(
+            chunk_meta.is_some(),
+            GetChunkReaderI {
+                i,
+                len: self.meta.len()
+            }
+        );
         let chunk = chunk_meta.unwrap();
         let offset = chunk.offset_chunk_header();
         //TODO 多读取了一部分数据
@@ -119,8 +125,10 @@ impl DefaultChunkReader {
             match header.chunk_type {
                 //chunk only have one page
                 5 => {
-                    let uncompressed_size = cursor.read_unsigned_varint_32().context(ReadCursorData)?;
-                    let compressed_size = cursor.read_unsigned_varint_32().context(ReadCursorData)?;
+                    let uncompressed_size =
+                        cursor.read_unsigned_varint_32().context(ReadCursorData)?;
+                    let compressed_size =
+                        cursor.read_unsigned_varint_32().context(ReadCursorData)?;
 
                     let mut data = vec![0; compressed_size as usize];
                     cursor.read_exact(&mut data).context(ReadCursorData)?;
@@ -138,27 +146,53 @@ impl DefaultChunkReader {
                     }));
                 }
                 _ => {
-                    let uncompressed_size = cursor.read_unsigned_varint_32().context(ReadCursorData)?;
-                    let compressed_size = cursor.read_unsigned_varint_32().context(ReadCursorData)?;
+                    let uncompressed_size =
+                        cursor.read_unsigned_varint_32().context(ReadCursorData)?;
+                    let compressed_size =
+                        cursor.read_unsigned_varint_32().context(ReadCursorData)?;
                     let page_statistic = Arc::new(match *statistic {
-                        Statistic::Boolean(_) => {
-                            Statistic::Boolean(BooleanStatistics::try_from(cursor.borrow_mut()).context(ReadStatistics { s_type: "boolean".to_string() })?)
-                        }
-                        Statistic::Int32(_) => {
-                            Statistic::Int32(IntegerStatistics::try_from(cursor.borrow_mut()).context(ReadStatistics { s_type: "Int32".to_string() })?)
-                        }
-                        Statistic::Int64(_) => {
-                            Statistic::Int64(LongStatistics::try_from(cursor.borrow_mut()).context(ReadStatistics { s_type: "Int64".to_string() })?)
-                        }
-                        Statistic::FLOAT(_) => {
-                            Statistic::FLOAT(FloatStatistics::try_from(cursor.borrow_mut()).context(ReadStatistics { s_type: "FLOAT".to_string() })?)
-                        }
-                        Statistic::DOUBLE(_) => {
-                            Statistic::DOUBLE(DoubleStatistics::try_from(cursor.borrow_mut()).context(ReadStatistics { s_type: "DOUBLE".to_string() })?)
-                        }
-                        Statistic::TEXT(_) => {
-                            Statistic::TEXT(BinaryStatistics::try_from(cursor.borrow_mut()).context(ReadStatistics { s_type: "TEXT".to_string() })?)
-                        }
+                        Statistic::Boolean(_) => Statistic::Boolean(
+                            BooleanStatistics::try_from(cursor.borrow_mut()).context(
+                                ReadStatistics {
+                                    s_type: "boolean".to_string(),
+                                },
+                            )?,
+                        ),
+                        Statistic::Int32(_) => Statistic::Int32(
+                            IntegerStatistics::try_from(cursor.borrow_mut()).context(
+                                ReadStatistics {
+                                    s_type: "Int32".to_string(),
+                                },
+                            )?,
+                        ),
+                        Statistic::Int64(_) => Statistic::Int64(
+                            LongStatistics::try_from(cursor.borrow_mut()).context(
+                                ReadStatistics {
+                                    s_type: "Int64".to_string(),
+                                },
+                            )?,
+                        ),
+                        Statistic::FLOAT(_) => Statistic::FLOAT(
+                            FloatStatistics::try_from(cursor.borrow_mut()).context(
+                                ReadStatistics {
+                                    s_type: "FLOAT".to_string(),
+                                },
+                            )?,
+                        ),
+                        Statistic::DOUBLE(_) => Statistic::DOUBLE(
+                            DoubleStatistics::try_from(cursor.borrow_mut()).context(
+                                ReadStatistics {
+                                    s_type: "DOUBLE".to_string(),
+                                },
+                            )?,
+                        ),
+                        Statistic::TEXT(_) => Statistic::TEXT(
+                            BinaryStatistics::try_from(cursor.borrow_mut()).context(
+                                ReadStatistics {
+                                    s_type: "TEXT".to_string(),
+                                },
+                            )?,
+                        ),
                     });
 
                     let mut data = vec![0; compressed_size as usize];

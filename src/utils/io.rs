@@ -2,9 +2,6 @@ use core::{cmp, fmt};
 use std::cell::RefCell;
 use std::io::{Cursor, Read, Result, Seek, SeekFrom};
 
-use byteorder::{BigEndian, ByteOrder, ReadBytesExt};
-use varint::VarintRead;
-
 use crate::file::reader::{Length, TryClone};
 
 const DEFAULT_BUF_SIZE: usize = 8 * 1024;

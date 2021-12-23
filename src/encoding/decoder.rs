@@ -1,8 +1,8 @@
-use std::io::Cursor;
-use byteorder::{BigEndian, ByteOrder, ReadBytesExt};
-use snafu::{ResultExt, Snafu};
 use crate::utils::cursor;
 use crate::utils::cursor::PackWidthReader;
+use byteorder::{BigEndian, ReadBytesExt};
+use snafu::{ResultExt, Snafu};
+use std::io::Cursor;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -13,7 +13,6 @@ pub enum Error {
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
-
 
 #[derive(Debug)]
 pub enum Field {
@@ -27,8 +26,8 @@ pub enum Field {
 
 pub trait Decoder {
     fn new() -> Self
-        where
-            Self: Sized;
+    where
+        Self: Sized;
     fn decode(&self, data: &mut Cursor<Vec<u8>>) -> Result<Vec<Field>>;
 }
 
@@ -49,7 +48,9 @@ impl Decoder for LongBinaryDecoder {
         let mut result = Vec::with_capacity(pack_num as usize);
 
         for i in 0..pack_num {
-            let value = data.read_pack_width_long(pack_width * i, pack_width).context(ReadPackedData)?;
+            let value = data
+                .read_pack_width_long(pack_width * i, pack_width)
+                .context(ReadPackedData)?;
             previous = previous + min_delta_base + value;
             result.push(Field::Int64(previous));
         }
@@ -70,7 +71,9 @@ impl Decoder for IntPlainDecoder {
     fn decode(&self, data: &mut Cursor<Vec<u8>>) -> Result<Vec<Field>> {
         let mut result = Vec::new();
         while data.position() < data.get_ref().len() as u64 {
-            result.push(Field::Int32(data.read_i32::<BigEndian>().context(ReadCursorData)?));
+            result.push(Field::Int32(
+                data.read_i32::<BigEndian>().context(ReadCursorData)?,
+            ));
         }
 
         Ok(result)

@@ -9,15 +9,14 @@ use snafu::{ResultExt, Snafu};
 
 use crate::chunk::reader::TsFileSensorReader;
 use crate::file::footer;
+use crate::file::metadata::MetadataIndexNodeType::*;
 use crate::file::metadata::{
-    MetadataIndexEntry, MetaDataIndexNode, MetadataIndexNodeType, TimeseriesMetadata,
+    MetaDataIndexNode, MetadataIndexEntry, MetadataIndexNodeType, TimeseriesMetadata,
     TimeseriesMetadataType, TsFileMetadata,
 };
-use crate::file::metadata::MetadataIndexNodeType::*;
 use crate::file::reader::{
     DeviceMetadataIter, FileReader, SectionReader, SensorMetadataIter, SensorReader,
 };
-use crate::utils::cursor;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -30,7 +29,6 @@ pub enum Error {
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
-
 
 impl TryFrom<File> for TsFileSearchReader<File> {
     type Error = Error;
@@ -80,7 +78,7 @@ impl<R: 'static + SectionReader> TsFileSearchReader<R> {
     ) -> Option<Vec<TimeseriesMetadata>> {
         let binary_search = |c: &MetaDataIndexNode,
                              calc: Box<dyn Fn(&MetadataIndexEntry) -> Ordering>|
-                             -> Option<(i64, i64, usize)> {
+         -> Option<(i64, i64, usize)> {
             let index = match c.children().binary_search_by(calc) {
                 Ok(r) => r,
                 Err(r) => {
@@ -100,8 +98,7 @@ impl<R: 'static + SectionReader> TsFileSearchReader<R> {
             Some((start, len, index))
         };
 
-        let mut stack = Vec::new();
-        stack.push(root);
+        let mut stack = vec![root];
         while !stack.is_empty() {
             let index = match stack.pop()? {
                 InternalDevice(c) | LeafDevice(c) | InternalMeasurement(c) => {
@@ -123,8 +120,7 @@ impl<R: 'static + SectionReader> TsFileSearchReader<R> {
                                 match self.reader.get_cursor(start.offset() as u64, len) {
                                     Ok(mut cursor) => {
                                         while cursor.position() < len as u64 {
-                                            if let Ok(t) = TimeseriesMetadataType::new(&mut cursor)
-                                            {
+                                            if let Ok(t) = TimeseriesMetadata::new(&mut cursor) {
                                                 result.push(t);
                                             }
                                         }
@@ -144,7 +140,7 @@ impl<R: 'static + SectionReader> TsFileSearchReader<R> {
                 Some((s, len, _)) => {
                     let mut reader = self.reader.get_read(s as u64, len as usize);
                     let mut data = vec![0; len as usize];
-                    reader.read_exact(&mut data).context(ReadData);
+                    reader.read_exact(&mut data);
                     if let Ok(result) = MetadataIndexNodeType::new(&mut Cursor::new(data)) {
                         stack.push(result);
                     }
@@ -160,9 +156,8 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
         &self.metadata
     }
 
-    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item=MetadataIndexNodeType>> {
-        let mut stack = Vec::new();
-        stack.push(self.metadata.file_meta().metadata_index().clone());
+    fn device_meta_iter(&self) -> Box<dyn DeviceMetadataIter<Item = MetadataIndexNodeType>> {
+        let stack = vec![self.metadata.file_meta().metadata_index().clone()];
         Box::new(DeviceMetadataReader::new(self.reader.clone(), stack))
     }
 
@@ -173,9 +168,8 @@ impl<R: 'static + SectionReader> FileReader for TsFileSearchReader<R> {
     fn sensor_meta_iter(
         &self,
         device: &str,
-    ) -> Box<dyn SensorMetadataIter<Item=TimeseriesMetadata>> {
-        let mut stack = Vec::new();
-        stack.push(self.metadata.file_meta().metadata_index().clone());
+    ) -> Box<dyn SensorMetadataIter<Item = TimeseriesMetadata>> {
+        let stack = vec![self.metadata.file_meta().metadata_index().clone()];
         Box::new(SensorMetadataReader::new(
             self.reader.clone(),
             stack,
@@ -322,7 +316,7 @@ impl<R: SectionReader> Iterator for SensorMetadataReader<R> {
                         let len = (end - start.offset()) as usize;
                         if let Ok(mut cursor) = self.reader.get_cursor(start.offset() as u64, len) {
                             while cursor.position() < len as u64 {
-                                if let Ok(t) = TimeseriesMetadataType::new(&mut cursor) {
+                                if let Ok(t) = TimeseriesMetadata::new(&mut cursor) {
                                     self.ts_stack.push(t);
                                 }
                             }

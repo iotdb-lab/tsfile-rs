@@ -13,11 +13,11 @@ use crate::file::metadata::MetadataIndexNodeType::{
 };
 use crate::file::metadata::TSDataType::Boolean;
 use crate::file::metadata::TimeseriesMetadataType::{MoreChunks, OneChunk};
+use crate::file::statistics;
 use crate::file::statistics::*;
 use crate::utils::cursor;
 use crate::utils::cursor::VarIntReader;
-use snafu::{Snafu};
-use crate::file::statistics;
+use snafu::Snafu;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -26,7 +26,10 @@ pub enum Error {
     #[snafu(display("Unable to read cursor data: {}", source))]
     ReadCursorData { source: std::io::Error },
     #[snafu(display("Unable to parser {} type statistics: {}", s_type, source))]
-    ParserStatistics { s_type: String, source: statistics::Error },
+    ParserStatistics {
+        s_type: String,
+        source: statistics::Error,
+    },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -206,7 +209,7 @@ impl TimeseriesMetadata {
     }
 }
 
-impl TimeseriesMetadataType {
+impl TimeseriesMetadata {
     pub fn new(cursor: &mut Cursor<Vec<u8>>) -> Result<TimeseriesMetadata> {
         let meta_type = match cursor.read_u8().context(ReadCursorData)? {
             0 => TimeseriesMetadataType::OneChunk,
@@ -217,16 +220,36 @@ impl TimeseriesMetadataType {
         let chunk_metadata_list_size = cursor.read_unsigned_varint_32().context(ReadCursorData)?;
 
         let statistics = Arc::new(match data_type {
-            Boolean => Statistic::Boolean(BooleanStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "Boolean".to_string() })?),
-            TSDataType::Int32 => {
-                Statistic::Int32(IntegerStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "Int32".to_string() })?)
-            }
-            TSDataType::Int64 => Statistic::Int64(LongStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "Int64".to_string() })?),
-            TSDataType::FLOAT => Statistic::FLOAT(FloatStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "FLOAT".to_string() })?),
-            TSDataType::DOUBLE => {
-                Statistic::DOUBLE(DoubleStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "DOUBLE".to_string() })?)
-            }
-            TSDataType::TEXT => Statistic::TEXT(BinaryStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "TEXT".to_string() })?),
+            Boolean => Statistic::Boolean(
+                BooleanStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics {
+                    s_type: "Boolean".to_string(),
+                })?,
+            ),
+            TSDataType::Int32 => Statistic::Int32(
+                IntegerStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics {
+                    s_type: "Int32".to_string(),
+                })?,
+            ),
+            TSDataType::Int64 => Statistic::Int64(
+                LongStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics {
+                    s_type: "Int64".to_string(),
+                })?,
+            ),
+            TSDataType::FLOAT => Statistic::FLOAT(
+                FloatStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics {
+                    s_type: "FLOAT".to_string(),
+                })?,
+            ),
+            TSDataType::DOUBLE => Statistic::DOUBLE(
+                DoubleStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics {
+                    s_type: "DOUBLE".to_string(),
+                })?,
+            ),
+            TSDataType::TEXT => Statistic::TEXT(
+                BinaryStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics {
+                    s_type: "TEXT".to_string(),
+                })?,
+            ),
         });
         let end_pos = cursor.position() + chunk_metadata_list_size as u64;
         let mut chunk_metadata_list = Vec::new();
@@ -236,16 +259,48 @@ impl TimeseriesMetadataType {
             let statistic = match meta_type {
                 OneChunk => statistics.clone(),
                 MoreChunks => Arc::new(match data_type {
-                    Boolean => Statistic::Boolean(BooleanStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "Boolean".to_string() })?),
+                    Boolean => Statistic::Boolean(
+                        BooleanStatistics::try_from(cursor.borrow_mut()).context(
+                            ParserStatistics {
+                                s_type: "Boolean".to_string(),
+                            },
+                        )?,
+                    ),
                     TSDataType::Int32 => {
-                        Statistic::Int32(IntegerStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "Int32".to_string() })?)
+                        Statistic::Int32(IntegerStatistics::try_from(cursor.borrow_mut()).context(
+                            ParserStatistics {
+                                s_type: "Int32".to_string(),
+                            },
+                        )?)
                     }
-                    TSDataType::Int64 => Statistic::Int64(LongStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "Int64".to_string() })?),
-                    TSDataType::FLOAT => Statistic::FLOAT(FloatStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "FLOAT".to_string() })?),
+                    TSDataType::Int64 => {
+                        Statistic::Int64(LongStatistics::try_from(cursor.borrow_mut()).context(
+                            ParserStatistics {
+                                s_type: "Int64".to_string(),
+                            },
+                        )?)
+                    }
+                    TSDataType::FLOAT => {
+                        Statistic::FLOAT(FloatStatistics::try_from(cursor.borrow_mut()).context(
+                            ParserStatistics {
+                                s_type: "FLOAT".to_string(),
+                            },
+                        )?)
+                    }
                     TSDataType::DOUBLE => {
-                        Statistic::DOUBLE(DoubleStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "DOUBLE".to_string() })?)
+                        Statistic::DOUBLE(DoubleStatistics::try_from(cursor.borrow_mut()).context(
+                            ParserStatistics {
+                                s_type: "DOUBLE".to_string(),
+                            },
+                        )?)
                     }
-                    TSDataType::TEXT => Statistic::TEXT(BinaryStatistics::try_from(cursor.borrow_mut()).context(ParserStatistics { s_type: "TEXT".to_string() })?),
+                    TSDataType::TEXT => {
+                        Statistic::TEXT(BinaryStatistics::try_from(cursor.borrow_mut()).context(
+                            ParserStatistics {
+                                s_type: "TEXT".to_string(),
+                            },
+                        )?)
+                    }
                 }),
             };
             chunk_metadata_list.push(ChunkMetadata::new(
@@ -377,16 +432,11 @@ impl TsFileMetadata {
             let filter_size = data.read_unsigned_varint_32().context(ReadCursorData)?;
             let hash_function_size = data.read_unsigned_varint_32().context(ReadCursorData)?;
             bloom_filter = Some(BloomFilter::new(bytes, filter_size, hash_function_size));
-            Ok(Self {
-                size: 0,
-                file_meta: FileMeta::new(metadata_index, meta_offset, bloom_filter),
-            })
-        } else {
-            Ok(Self {
-                size: 0,
-                file_meta: FileMeta::new(metadata_index, meta_offset, bloom_filter),
-            })
         }
+        Ok(Self {
+            size: 0,
+            file_meta: FileMeta::new(metadata_index, meta_offset, bloom_filter),
+        })
     }
 }
 
@@ -451,9 +501,6 @@ impl MetadataIndexEntry {
     fn new(data: &mut Cursor<Vec<u8>>) -> Result<Self> {
         let name = data.read_varint_string().context(ReadVarInt)?;
         let offset = data.read_i64::<BigEndian>().context(ReadCursorData)?;
-        Ok(Self {
-            name,
-            offset,
-        })
+        Ok(Self { name, offset })
     }
 }

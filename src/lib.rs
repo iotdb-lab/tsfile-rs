@@ -27,7 +27,7 @@ mod tests {
                         let sensors = reader.sensor_meta_iter(device_name);
                         sensors.for_each(|s| {
                             if let Some(option) =
-                            reader.get_sensor_reader(device_name, s.measurement_id())
+                                reader.get_sensor_reader(device_name, s.measurement_id())
                             {
                                 if let Ok(x) = option.get_chunk_reader(0) {
                                     x.for_each(|y| println!("{:?}", y.data()));
@@ -38,7 +38,7 @@ mod tests {
                     _ => {}
                 });
             }
-            Err(e) => println!("{:?}", e)
+            Err(e) => println!("{:?}", e),
         }
         // let x1 = reader.sensor_meta_iter();
         // x1.for_each(|f| f.for_each(|y| println!("{:?}", y)));

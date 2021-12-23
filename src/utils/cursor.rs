@@ -1,4 +1,4 @@
-use byteorder::{BigEndian, ReadBytesExt};
+use byteorder::ReadBytesExt;
 use snafu::{ResultExt, Snafu};
 use std::io;
 use std::io::{Cursor, Read};
@@ -28,15 +28,14 @@ pub trait VarIntReader: VarintRead {
         let mut data: Vec<u8> = vec![0; len];
         self.read_exact(&mut data)
             .context(ReadFixedLengthData { len })?;
-        Ok(String::from_utf8(data).context(ReadUTF8String)?)
+        String::from_utf8(data).context(ReadUTF8String)
     }
 
     fn read_bool(&mut self) -> Result<bool> {
-        let d = self.read_u8().context(ReadFixedLengthData { len: 1 as usize })?;
-        Ok(match d {
-            0 => false,
-            _ => true,
-        })
+        let d = self
+            .read_u8()
+            .context(ReadFixedLengthData { len: 1_usize })?;
+        Ok(!matches!(d, 0))
     }
 }
 

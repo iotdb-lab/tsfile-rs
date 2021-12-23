@@ -2,11 +2,11 @@ use std::borrow::BorrowMut;
 use std::convert::TryFrom;
 use std::io::Cursor;
 
+use crate::utils::cursor;
+use crate::utils::cursor::VarIntReader;
 use byteorder::{BigEndian, ReadBytesExt};
 use snafu::{ResultExt, Snafu};
 use varint::VarintRead;
-use crate::utils::cursor;
-use crate::utils::cursor::VarIntReader;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -95,7 +95,9 @@ impl TryFrom<&mut Cursor<Vec<u8>>> for StatisticHeader {
     type Error = Error;
 
     fn try_from(cursor: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
-        let count = cursor.read_unsigned_varint_32().context(ReadUnsignedVarInt)? as i32;
+        let count = cursor
+            .read_unsigned_varint_32()
+            .context(ReadUnsignedVarInt)? as i32;
         let start_time = cursor.read_i64::<BigEndian>().context(ReadCursorData)?;
         let end_time = cursor.read_i64::<BigEndian>().context(ReadCursorData)?;
         Ok(Self {
