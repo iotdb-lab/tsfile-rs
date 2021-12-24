@@ -1,6 +1,6 @@
 [package]
 name = "tsfile"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["liudw <liudw@apache.org>"]
 edition = "2021"
 license = "Apache-2.0"
